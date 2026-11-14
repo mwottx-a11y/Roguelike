@@ -130,6 +130,9 @@ export class World {
     this.pillars = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.ShaderMaterial({ uniforms: this.fu, vertexShader: PILLAR_VS, fragmentShader: PILLAR_FS }), 64);
     this.pillars.frustumCulled = false; this.pillars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(this.floor, this.pillars, this.main.mesh, this.add.mesh);
+    // Bloom needs float render targets; very old GPUs lack them, so fall back to a plain render.
+    const gl = r.getContext();
+    this.direct = !(r.capabilities.isWebGL2 !== false && (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')));
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(this.scene, this.cam));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.45, 0.95);
@@ -244,7 +247,7 @@ export class World {
   }
   finish() {
     this.main.end(); this.add.end();
-    this.composer.render();
+    if (this.direct) this.renderer.render(this.scene, this.cam); else this.composer.render();
   }
 
   // ---------- gameplay frame ----------
