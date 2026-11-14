@@ -44,14 +44,19 @@ neighbour resonance, 24 relics, 12 tomes.
 slot and frees the other. The wheel shows a link marker between neighbours that form a recipe.
 
 **Time signatures.** One wheel slot is one beat, so the wheel's size is the meter: 3 slots = 3/4,
-4 = 4/4, 5 = 5/4. At 6 slots a beat becomes an eighth note - 6/8, double time - then 7/8 and 8/8.
-Every boss you beat adds a slot, so the meter evolves through the run.
+4 = 4/4, 5 = 5/4. At 6 slots (the maximum) a beat becomes an eighth note: 6/8, double time.
+Slots come from the Extra Slot tome, the Bigger Wheel upgrade, and the character Vex.
 
-**Music.** `src/music.js` composes a new song for every stage: it picks a genre suited to the biome
-(baroque, chip rock, synthwave, celtic, latin, funk, jazz, metal), a key and mode, chord progressions
-for a 16-bar AABA form, then writes melody (chord tones on strong beats, stepwise motion, sequenced
-motifs, cadences), bass, comping and drums for whatever meter the wheel is in. `src/audio.js` plays it
-on a small General-MIDI-style synth. `node tools/musictest.mjs` checks the output against theory rules.
+**Music.** `src/music.js` composes a new song for every stage: key and mode, chord progressions for a
+16-bar AABA form, then melody (chord tones on strong beats, stepwise motion, sequenced motifs,
+cadences), bass, comping and drums for whatever meter the wheel is in. `src/audio.js` plays it on a
+small General-MIDI-style synth. `node tools/musictest.mjs` checks the output against theory rules.
+
+**Your spells pick the band.** Each spell class has a genre: Arcane = baroque, Fire = metal,
+Frost = jazz, Volt = funk, Void = synthwave, Nature = celtic, Steel = chip rock, modifiers = latin.
+Runes are weighted by level. The strongest class drives drums and bass, the second plays the chords,
+the third takes the melody, and the arrangement re-orchestrates live whenever the wheel changes
+(the key, chords and tune stay put until the next stage).
 
 Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 7 characters, new runes;
 27 feats; a fusion codex; Volume 0–12 difficulty ladder.

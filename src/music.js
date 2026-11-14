@@ -40,10 +40,14 @@ export const GENRES = {
   metal: { name: 'Metal', modes: ['phrygian', 'aeolian'], lead: ['sawlead', 'square'], comp: ['dist', 'power'], bass: ['synbass', 'root8'], drums: 'metal', dens: 0.7 },
   celtic: { name: 'Celtic', modes: ['dorian', 'mixolydian'], lead: ['flute', 'fiddle'], comp: ['nylon', 'strum'], bass: ['finger', 'oompah'], drums: 'folk', dens: 0.8 },
 };
-export const BIOME_GENRES = {
-  crypt: ['baroque', 'chiprock', 'synthwave'], hollow: ['celtic', 'latin', 'funk'], vault: ['jazz', 'synthwave', 'baroque'],
-  foundry: ['metal', 'funk', 'chiprock'], stage: ['funk', 'metal', 'jazz', 'synthwave', 'latin'],
-};
+// Each spell class has a genre. The runes on your wheel decide the band: see Song.setMix.
+export const ELEM_GENRE = { arcane: 'baroque', fire: 'metal', frost: 'jazz', volt: 'funk', void: 'synthwave', nature: 'celtic', steel: 'chiprock', mod: 'latin' };
+// { fire: 5, frost: 2 } -> [['metal', 5], ['jazz', 2]] sorted by weight
+export function genreMix(elemWeights) {
+  const w = {}; for (const e in elemWeights || {}) { const g = ELEM_GENRE[e]; if (g && elemWeights[e] > 0) w[g] = (w[g] || 0) + elemWeights[e]; }
+  const out = Object.entries(w).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  return out.length ? out : [['baroque', 1]];
+}
 const NOTE = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 // How each meter is felt: groups of beats. Group starts carry the accents.
@@ -58,11 +62,14 @@ const KIT = {
 };
 
 export class Song {
-  constructor(seed, biome) {
+  // mix: [[genreId, weight], ...] strongest first. The strongest genre at composition time sets the mode;
+  // after that the key, chords and tune stay put while setMix() re-orchestrates them live.
+  constructor(seed, mix) {
     this.seed = seed >>> 0;
     const R = rng(this.seed);
-    this.genreId = pickR(R, BIOME_GENRES[biome] || Object.keys(GENRES));
-    const g = this.g = GENRES[this.genreId];
+    if (!mix || !mix.length) mix = [['baroque', 1]];
+    this.genreId = mix[0][0];
+    const g = GENRES[this.genreId];
     this.mode = pickR(R, g.modes);
     this.keyPc = Math.floor(R() * 12);
     this.tonic = 48 + ((this.keyPc + 6) % 12) - 6 + 0; // tonic near C3
@@ -72,35 +79,49 @@ export class Song {
     this.progA = progs[ai];
     const b = progs[bi], rot = 1 + Math.floor(R() * 2);
     this.progB = [b[rot % 4], b[(rot + 1) % 4], b[(rot + 2) % 4], DOMINANT[this.mode]];
-    this.leadInst = pickR(R, g.lead);
+    this.leadPick = R();
     this.cache = new Map();
-    this.title = `${g.name} in ${NOTE[this.keyPc]} ${MODE_LABEL[this.mode]}`;
+    this.setMix(mix);
+  }
+  // Hand out the band's chairs by weight: the strongest genre drives drums and bass, the second plays the
+  // chords, the third (or second) takes the melody. A genre needs a real share of the wheel to get a chair.
+  setMix(mix) {
+    if (!mix || !mix.length) mix = [['baroque', 1]];
+    let tot = 0; for (const m of mix) tot += m[1];
+    const g1 = mix[0][0], g2 = mix[1] && mix[1][1] >= tot * 0.2 ? mix[1][0] : g1, g3 = mix[2] && mix[2][1] >= tot * 0.15 ? mix[2][0] : g2;
+    this.style = { drums: g1, bass: g1, comp: g2, lead: g3 };
+    this.sig = g1 + '/' + g2 + '/' + g3;
+    const gl = GENRES[g3].lead; this.leadInst = gl[Math.floor(this.leadPick * gl.length) % gl.length];
+    this.bassInst = GENRES[g1].bass[0] === 'organ' ? 'organbass' : GENRES[g1].bass[0];
+    this.genres = [...new Set([g1, g2, g3])];
+    this.title = `${this.genres.map(id => GENRES[id].name).join(' + ')} in ${NOTE[this.keyPc]} ${MODE_LABEL[this.mode]}`;
   }
   // chord for a degree: tones as semitone offsets from the tonic (root position, stacked thirds)
   chord(deg) {
     const sc = MODES[this.mode], at = k => sc[((k % 7) + 7) % 7] + 12 * Math.floor(k / 7);
-    if (deg === 'V') { const t = [7, 11, 14]; if (this.g.sevenths) t.push(17); return { deg, root: 7, tones: t, pcs: t.map(x => x % 12), scale: MODES.harmonic }; }
-    const t = [at(deg), at(deg + 2), at(deg + 4)]; if (this.g.sevenths) t.push(at(deg + 6));
+    if (deg === 'V') { const t = [7, 11, 14]; if (GENRES[this.style.comp].sevenths) t.push(17); return { deg, root: 7, tones: t, pcs: t.map(x => x % 12), scale: MODES.harmonic }; }
+    const t = [at(deg), at(deg + 2), at(deg + 4)]; if (GENRES[this.style.comp].sevenths) t.push(at(deg + 6));
     return { deg, root: t[0] % 12, tones: t, pcs: t.map(x => ((x % 12) + 12) % 12), scale: sc };
   }
   section(idx) { const s = Math.floor(idx / 4) % 4, pos = idx % 4; return { sec: s === 2 ? 'B' : 'A', pos, rep: s, deg: (s === 2 ? this.progB : this.progA)[pos] }; }
 
   bar(idx, beats, unit) {
     idx = ((idx % 16) + 16) % 16;
-    const key = idx + ':' + beats + ':' + unit;
+    const key = idx + ':' + beats + ':' + unit + ':' + this.sig;
     let b = this.cache.get(key);
     if (!b) { b = this.write(idx, beats, unit); this.cache.set(key, b); if (this.cache.size > 400) this.cache.clear(); }
     return b;
   }
 
   write(idx, beats, unit) {
-    const S = this.section(idx), nextS = this.section((idx + 1) % 16), g = this.g;
+    const S = this.section(idx), nextS = this.section((idx + 1) % 16);
+    const gd = GENRES[this.style.drums], gb = GENRES[this.style.bass], gc = GENRES[this.style.comp], gl = GENRES[this.style.lead];
     const chord = this.chord(S.deg), next = this.chord(nextS.deg);
     const groups = grouping(beats, unit), accents = []; { let k = 0; for (const n of groups) { accents.push(k); k += n; } }
     const isAcc = i => accents.includes(i);
     const ev = Array.from({ length: beats }, () => []);
     const put = (beat, o, part, n, d, v) => { if (beat >= 0 && beat < beats) ev[beat].push({ o, part, n, d, v }); };
-    const sw = g.swing && unit === 4 ? g.swing : 0.5;
+    const sw = gd.swing && unit === 4 ? gd.swing : 0.5;
     const tag = `${this.seed}:${S.sec}:${beats}:${unit}:`;
     const tonic = this.tonic;
 
@@ -118,7 +139,7 @@ export class Song {
       const nearCT = (i, R2) => { let best = i, bd = 99; for (let k = 0; k < ladder.length; k++) if (isCT(ladder[k])) { const d = Math.abs(k - i) + (R2 ? R2() * 0.9 : 0); if (d < bd) { bd = d; best = k; } } return best; };
       let cur = nearCT(Math.floor(ladder.length * (0.3 + P() * 0.4)), P), dir = P() < 0.5 ? 1 : -1;
       const notes = []; // {beat, o, len}
-      const dens = g.dens;
+      const dens = gl.dens;
       for (let i = 0; i < beats; i++) {
         const acc = isAcc(i);
         let cell;
@@ -156,7 +177,7 @@ export class Song {
 
     // ----- bass
     {
-      const R = rng(hashStr(tag + 'bass' + S.pos)), style = g.bass[1];
+      const R = rng(hashStr(tag + 'bass' + S.pos)), style = gb.bass[1];
       let root = tonic - 24 + chord.root; while (root < 31) root += 12; while (root > 45) root -= 12;
       let nroot = tonic - 24 + next.root; while (nroot < 31) nroot += 12; while (nroot > 45) nroot -= 12;
       const fifth = root + 7, third = root + (chord.tones[1] - chord.tones[0]), approach = nroot + (R() < 0.5 ? -1 : (chord.scale.includes((nroot + 2 - tonic + 240) % 12) ? 2 : 1));
@@ -200,7 +221,7 @@ export class Song {
       const all = (beat, o, d, v, tones = voicing) => tones.forEach(m => put(beat, o, 'comp:' + inst, m, d, v));
       if (style === 'pad') all(0, 0, beats * 0.98, 0.6);
       else if (style === 'arp') {
-        const pat = pickR(R, [[0, 1, 2, 1], [0, 2, 1, 2], [0, 1, 2, 3], [2, 1, 0, 1]]), sub = unit === 4 ? (g.dens > 0.7 ? 4 : 2) : 1; let k = 0;
+        const pat = pickR(R, [[0, 1, 2, 1], [0, 2, 1, 2], [0, 1, 2, 3], [2, 1, 0, 1]]), sub = unit === 4 ? (gc.dens > 0.7 ? 4 : 2) : 1; let k = 0;
         const tones = [...voicing, voicing[0] + 12];
         for (let i = 0; i < beats; i++) for (let q = 0; q < sub; q++) put(i, q / sub, 'comp:' + inst, tones[pat[k++ % 4] % tones.length], 0.9 / sub, q === 0 && isAcc(i) ? 0.7 : 0.5);
       } else if (style === 'stab') {
@@ -225,12 +246,12 @@ export class Song {
         for (let i = 0; i < beats; i++) { all(i, 0, isAcc(i) ? 0.8 : 0.35, isAcc(i) ? 0.7 : 0.45); if (unit === 4 && R() < 0.6) all(i, 0.5, 0.25, 0.4, voicing.slice(1)); }
       }
     };
-    comp(g.comp[0], g.comp[1], 'a');
-    if (g.comp2) comp(g.comp2[0], g.comp2[1], 'b');
+    comp(gc.comp[0], gc.comp[1], 'a');
+    if (gc.comp2) comp(gc.comp2[0], gc.comp2[1], 'b');
 
     // ----- drums
     {
-      const R = rng(hashStr(tag + 'drum' + (S.pos % 2))), style = g.drums, kit = (KIT[unit][beats] || 'K' + 'h'.repeat(beats - 1));
+      const R = rng(hashStr(tag + 'drum' + (S.pos % 2))), style = gd.drums, kit = (KIT[unit][beats] || 'K' + 'h'.repeat(beats - 1));
       const d = (beat, o, n, v) => put(beat, o, 'drum', n, 0, v);
       const fill = S.pos === 3, lastAcc = accents[accents.length - 1];
       for (let i = 0; i < beats; i++) {

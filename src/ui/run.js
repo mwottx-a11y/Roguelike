@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { G, C, makeRoot, metrics, txt, img, btn, panel, tap, box, hexs } from './kit.js';
 import { save, persist, checkFeats } from '../save.js';
 import { Run, xpNeed } from '../game.js';
+import { ELEM_GENRE, GENRES } from '../music.js';
 import { RUNES, ELEM, PASSIVES, RELICS, MAX_RUNE_LVL, BIOMES, fusionOf, fusionPartners } from '../data.js';
 
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -183,7 +184,7 @@ export class RunScene extends Phaser.Scene {
     let icon, name, tag, desc, col = 0x8a7fd0, tint;
     if (opt.kind === 'rune' || opt.kind === 'up') {
       const R = RUNES[opt.id]; icon = 'rune_' + opt.id; name = R.name; col = ELEM[R.elem].c;
-      if (opt.kind === 'rune') { tag = `NEW  ${ELEM[R.elem].name.toUpperCase()}${R.type === 'mod' ? '' : ' SPELL'}`; desc = R.desc; }
+      if (opt.kind === 'rune') { tag = `NEW  ${ELEM[R.elem].name.toUpperCase()}${R.type === 'mod' ? '' : ' SPELL'}  -  ${GENRES[ELEM_GENRE[R.elem]].name.toUpperCase()}`; desc = R.desc; }
       else { tag = `UPGRADE  LV ${opt.lvl} > ${opt.lvl + 1}${opt.lvl + 1 >= MAX_RUNE_LVL ? '  (MAX)' : ''}`; desc = R.up[opt.lvl - 1]; }
       const fp = fusionPartners(opt.id); if (fp.length && h >= 70) desc += '\nFuses with ' + fp.map(id => RUNES[id].name).join(' or ') + ' (both MAX, side by side)';
     } else if (opt.kind === 'fuse') {

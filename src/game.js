@@ -10,6 +10,7 @@ const NOFX = new Proxy({}, { get: () => () => {} });
 export const xpNeed = l => Math.floor(4 + 3 * l + 0.5 * l * l);
 // One wheel slot = one beat. Up to 5 slots a beat is a quarter note; from 6 slots it is an eighth note (double time).
 export const STEP_Q = 0.42;
+export const MAX_SLOTS = 6;
 
 export class Run {
   constructor({ char, volume = 0, metaLevels = {}, unlocked, fx, audio }) {
@@ -25,7 +26,7 @@ export class Run {
     this.res = new Array(8).fill(0);
     this.fire = new Array(8).fill(0); // per-slot flash timers for the HUD
     this.recalc();
-    this.size = Math.min(8, this.s.slots);
+    this.size = Math.min(MAX_SLOTS, this.s.slots);
     this.char.start.forEach((id, i) => { this.wheel[i] = { id, lvl: 1 }; });
     this.p = { x: 0, z: 0, hp: this.s.maxHp, inv: 0, dashT: 0, dashCd: 0, dashN: this.s.dashes, dx: 0, dz: 1, fx: 0, fz: 1, moving: false, hurt: 0 };
     this.input = { x: 0, z: 0, dash: false, drop: false };
@@ -57,16 +58,15 @@ export class Run {
     const P = this.passives;
     s.dmg *= 1 + 0.12 * (P.might || 0); s.tempo *= 1 + 0.06 * (P.tempo || 0); s.maxHp += 20 * (P.vital || 0); s.speed *= 1 + 0.07 * (P.swift || 0);
     s.magnet *= 1 + 0.35 * (P.magnet || 0); s.area *= 1 + 0.1 * (P.area || 0); s.crit += 0.07 * (P.crit || 0); s.slots += P.slot || 0; s.multi += P.multi || 0;
-    s.slots += this.bonusSlots || 0;
     s.regen += 0.5 * (P.regen || 0); s.armor += 2 * (P.armor || 0); s.xpMul *= 1 + 0.1 * (P.growth || 0);
     for (const id of this.relics) RELICS[id].f(s);
     s.maxHp = Math.max(20, Math.round(s.maxHp * s.maxHpMul));
     this.s = s;
-    if (this.p) { const z0 = this.size; this.size = Math.min(8, s.slots); this.p.hp = Math.min(this.p.hp, s.maxHp); if (z0 !== this.size) this.wheelChanged(); }
+    if (this.p) { const z0 = this.size; this.size = Math.min(MAX_SLOTS, s.slots); this.p.hp = Math.min(this.p.hp, s.maxHp); if (z0 !== this.size) this.wheelChanged(); }
   }
   wheelChanged() {
     const n = this.size;
-    let full = n >= 8;
+    let full = n >= MAX_SLOTS;
     for (let i = 0; i < 8; i++) {
       this.res[i] = 0;
       const w = this.wheel[i];
@@ -87,6 +87,9 @@ export class Run {
     const meter = this.beats + '/' + (n >= 6 ? 8 : 4);
     if (this.meter && meter !== this.meter && this.toasts) this.toast(meter + (n >= 6 && this.meter.endsWith('/4') ? '  DOUBLE TIME!' : ' TIME'), 0x73eff6);
     this.meter = meter;
+    // the band follows the wheel: each spell class brings its genre, weighted by rune level
+    const mix = {}; for (let i = 0; i < n; i++) { const w = this.wheel[i]; if (!w) continue; const d = RUNES[w.id]; mix[d.elem] = (mix[d.elem] || 0) + (d.fusion ? 8 : d.type === 'mod' ? w.lvl * 0.6 : w.lvl); }
+    this.audio.setMix(mix);
   }
   stepLen() { return this.size >= 6 ? STEP_Q / 2 : STEP_Q; }
   // adjacent (circular) pairs of MAX spells that match a recipe
@@ -111,15 +114,15 @@ export class Run {
     st.mut.f(st);
     this.stage = st;
     const v = this.volume;
-    const late = n >= 3 ? 2.3 * Math.pow(1.24, n - 3) : 1; // the wheel hits double time around stage 4; foes toughen to match
+    const late = n >= 3 ? 1.4 * Math.pow(1.25, n - 3) : 1; // the wheel hits double time around stage 4; foes toughen to match
     this.late = late;
-    this.eHp = Math.pow(1.72, n) * late * (1 + 0.22 * v + 0.02 * v * v) * st.hpMul;
+    this.eHp = Math.pow(1.72, n) * (n === 1 ? 0.85 : 1) * late * (1 + 0.22 * v + 0.012 * v * v) * st.hpMul;
     this.eDmg = Math.pow(1.27, n) * (n >= 3 ? 1.15 : 1) * (1 + 0.11 * v) * st.dmgMul;
     this.eSpd = (v >= 10 ? 1.16 : v >= 4 ? 1.08 : 1) * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
     this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy); this.spot = null;
     this.state = 'play';
     this.fx.biome(biome);
-    this.audio.newSong(biome.id);
+    this.audio.newSong();
     this.toast(biome.name, biome.acc);
     if (st.mut.id !== 'calm') this.toast(st.mut.name.toUpperCase(), 0xffcd75);
     if (st.freeRelic) this.pending.push('relic');
@@ -479,8 +482,6 @@ export class Run {
     for (let k = 0; k < 14; k++) this.pickups.push({ type: 'gold', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4, t: 0 });
     for (let k = 0; k < 10; k++) this.pickups.push({ type: 'xp', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4 + st.n * 2, t: 0 });
     this.pending.push('relic');
-    // every boss you beat widens the wheel: the time signature grows with the run
-    if (this.size < 8) { this.bonusSlots = (this.bonusSlots || 0) + 1; this.recalc(); }
     this.heal(this.s.maxHp * 0.25);
     this.state = 'clear'; st.clearT = 2.4;
     this.toast('STAGE CLEAR', 0xffcd75);
@@ -770,8 +771,8 @@ export class Run {
     }
     for (const id in PASSIVES) {
       const P = PASSIVES[id], l = this.passives[id] || 0; if (l >= P.max) continue;
-      if (id === 'slot' && s.slots >= 8) continue;
-      pool.push({ kind: 'passive', id, lvl: l, w: P.rare ? 0.35 * (1 + s.luck) * (id === 'slot' && empty === 0 ? 2.5 : 1) : 1 });
+      if (id === 'slot' && s.slots >= MAX_SLOTS) continue;
+      pool.push({ kind: 'passive', id, lvl: l, w: id === 'slot' ? (empty === 0 ? 1.6 : 0.7) : P.rare ? 0.35 * (1 + s.luck) : 1 });
     }
     const out = this.fusionReady().slice(0, 2);
     for (let k = out.length; k < s.choices && pool.length; k++) {

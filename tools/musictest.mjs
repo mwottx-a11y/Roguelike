@@ -1,9 +1,13 @@
 // Sanity-checks the composer against basic theory rules: node tools/musictest.mjs
-import { Song, GENRES, BIOME_GENRES, MODES, grouping } from '../src/music.js';
+import { Song, GENRES, ELEM_GENRE, genreMix, MODES, grouping, rng } from '../src/music.js';
 const METERS = [[2, 4], [3, 4], [4, 4], [5, 4], [5, 8], [6, 8], [7, 8], [8, 8], [1, 4]];
 let bad = 0, songs = 0; const stats = {};
-for (const biome of Object.keys(BIOME_GENRES)) for (let seed = 1; seed <= 40; seed++) {
-  const s = new Song(seed * 7919 + biome.length, biome); songs++;
+// every single class, plus random mixed wheels
+const ELEMS = Object.keys(ELEM_GENRE), wheels = ELEMS.map(e => ({ [e]: 3 }));
+{ const R = rng(99); for (let k = 0; k < 60; k++) { const w = {}; for (let j = 0; j < 2 + Math.floor(R() * 4); j++) { const e = ELEMS[Math.floor(R() * ELEMS.length)]; w[e] = (w[e] || 0) + 1 + Math.floor(R() * 5); } wheels.push(w); } }
+let wi = 0;
+for (const wheel of wheels) for (let seed = 1; seed <= 3; seed++) {
+  const s = new Song(seed * 7919 + (wi++), genreMix(wheel)); songs++;
   const st = stats[s.genreId] || (stats[s.genreId] = { n: 0, lead: 0, inScale: 0, strong: 0, strongCT: 0, bassDown: 0, bassRoot: 0, bars: 0, ev: 0, leaps: 0, steps: 0, lo: 999, hi: 0, titles: new Set() });
   st.n++; st.titles.add(s.title);
   for (const [beats, unit] of METERS) {
@@ -33,7 +37,17 @@ for (const biome of Object.keys(BIOME_GENRES)) for (let seed = 1; seed <= 40; se
 const pct = (a, b) => (100 * a / b).toFixed(0) + '%';
 for (const g in stats) { const t = stats[g]; console.log(g.padEnd(10), `songs ${String(t.n).padStart(3)}  melody in scale ${pct(t.inScale, t.lead)}  strong beats on chord tones ${pct(t.strongCT, t.strong)}  bass root on downbeat ${pct(t.bassRoot, t.bassDown)}  stepwise ${pct(t.steps, t.steps + t.leaps)}  range ${t.lo}-${t.hi}  ev/bar ${(t.ev / t.bars).toFixed(0)}  distinct keys/modes ${t.titles.size}`); }
 console.log('songs', songs, 'genres', Object.keys(stats).length + '/' + Object.keys(GENRES).length, 'violations', bad);
-const ex = new Song(12345, 'vault'); console.log('example:', ex.title, 'A', JSON.stringify(ex.progA), 'B', JSON.stringify(ex.progB), 'lead', ex.leadInst);
+// mixing rules
+const mixOf = w => new Song(5, genreMix(w));
+const a = mixOf({ fire: 5 }), b2 = mixOf({ fire: 5, frost: 4 }), c3 = mixOf({ fire: 5, frost: 4, nature: 3 }), d4 = mixOf({ fire: 10, frost: 1 });
+const chk = (label, ok) => { if (!ok) { bad++; console.log('BAD mix:', label); } };
+chk('one class = one genre', a.genres.join() === 'metal');
+chk('two classes: leader keeps drums+bass, second takes chords+lead', b2.style.drums === 'metal' && b2.style.bass === 'metal' && b2.style.comp === 'jazz' && b2.style.lead === 'jazz');
+chk('three classes: third takes the lead', c3.style.lead === 'celtic' && c3.style.comp === 'jazz');
+chk('a token rune does not get a chair', d4.genres.join() === 'metal');
+{ const live = mixOf({ fire: 5 }), k = live.keyPc, m = live.mode, pa = JSON.stringify(live.progA); live.setMix(genreMix({ frost: 9, fire: 5 })); chk('re-orchestrating keeps key, mode and chords', live.keyPc === k && live.mode === m && JSON.stringify(live.progA) === pa && live.style.drums === 'jazz'); }
+console.log('mix examples:', [a, b2, c3].map(x => x.title).join('  |  '));
+const ex = new Song(12345, genreMix({ arcane: 3 })); console.log('example:', ex.title, 'A', JSON.stringify(ex.progA), 'B', JSON.stringify(ex.progB), 'lead', ex.leadInst);
 const bar = ex.bar(0, 5, 4); console.log('5/4 bar 1 lead:', bar.events.map((l, i) => l.filter(e => e.part === 'lead').map(e => `${i + 1}+${e.o.toFixed(2)}:${e.n}`).join(' ')).join(' | '));
 console.log('5/4 bar 1 drums:', bar.events.map(l => l.filter(e => e.part === 'drum').map(e => e.n + '@' + e.o.toFixed(2)).join(',')).join(' | '));
 process.exit(bad ? 1 : 0);

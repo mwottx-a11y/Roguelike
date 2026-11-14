@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { G, C, makeRoot, txt, img, btn, panel, tap, clear, hexs } from './kit.js';
+import { ELEM_GENRE, GENRES } from '../music.js';
 import { save, persist, resetSave, metaLvl, checkFeats, metaTotals } from '../save.js';
 import { CHARS, META, metaCost, RUNES, RUNE_IDS, ELEM, FEATS, FUSIONS, VOLUME_MAX, volumeDesc, TIPS, BIOMES } from '../data.js';
 
@@ -9,13 +10,15 @@ export class MenuScene extends Phaser.Scene {
     this.view = 'home'; this.sel = 0; this.confirm = false;
     this.charIdx = Math.max(0, CHARS.findIndex(c => c.id === save.char));
     G.world.reset(); G.world.biome(BIOMES[(save.stats.runs || 0) % BIOMES.length]);
-    G.audio.newSong(BIOMES[(save.stats.runs || 0) % BIOMES.length].id); this.mt = 0.3; this.mb = 0; this.runeTab = 'runes';
+    this.charSong(); this.mt = 0.3; this.mb = 0; this.runeTab = 'runes';
     const got = checkFeats(null); if (got.length) persist();
     this.tip = Phaser.Utils.Array.GetRandom(TIPS);
     this.build();
     this.scale.on('resize', this.build, this);
     this.events.once('shutdown', () => this.scale.off('resize', this.build, this));
   }
+  // the title tune is composed for the selected character's starting runes
+  charSong() { const mix = {}; for (const id of CHARS[this.charIdx].start) { const e = RUNES[id].elem; mix[e] = (mix[e] || 0) + 1; } G.audio.setMix(mix); G.audio.newSong(); }
   go(view) { this.view = view; this.sel = 0; this.confirm = false; this.build(); }
   update(t, dms) {
     if (G.hidden) return;
@@ -81,7 +84,7 @@ export class MenuScene extends Phaser.Scene {
     // affordable upgrade hint
     if (META.some(u => metaLvl(u.id) < u.max && metaCost(u, metaLvl(u.id)) <= save.echoes)) { const dot = txt(this, r, x - 132 + 34, by - 52, '!', 14, C.gold, 0.5, 0.5, { bold: true }); this.tweens.add({ targets: dot, y: by - 56, duration: 300, yoyo: true, repeat: -1 }); }
   }
-  pickChar() { const c = CHARS[this.charIdx]; if (save.chars.includes(c.id)) { save.char = c.id; persist(); } this.build(); }
+  pickChar() { this.charSong(); const c = CHARS[this.charIdx]; if (save.chars.includes(c.id)) { save.char = c.id; persist(); } this.build(); }
 
   // generic grid + detail layout
   grid(title, items, detail, pad = 0) {
@@ -116,12 +119,12 @@ export class MenuScene extends Phaser.Scene {
     btn(this, r0, m0.cx, 66 + m0.top, 200, 24, this.runeTab === 'runes' ? 'SHOW FUSIONS >' : '< SHOW RUNES', () => { this.runeTab = this.runeTab === 'runes' ? 'fusions' : 'runes'; this.sel = 0; this.build(); }, { size: 11, color: C.gold });
     if (this.runeTab === 'fusions') {
       const items = FUSIONS.map(f => { const got = (save.fusions || []).includes(f.id); return { icon: 'rune_' + f.id, dim: !got, sub: got ? 'MADE' : '', subColor: C.green }; });
-      return this.grid('FUSIONS', items, (it, i) => { const f = FUSIONS[i], got = (save.fusions || []).includes(f.id); return { name: f.name, color: hexs(ELEM[f.elem].c), desc: `${RUNES[f.a].name} + ${RUNES[f.b].name}\n${f.desc}`, note: got ? 'DISCOVERED' : 'Both MAX level, side by side on the wheel', noteColor: got ? C.green : C.gold }; }, 24);
+      return this.grid('FUSIONS', items, (it, i) => { const f = FUSIONS[i], got = (save.fusions || []).includes(f.id); return { name: f.name, color: hexs(ELEM[f.elem].c), desc: `${RUNES[f.a].name} + ${RUNES[f.b].name}  -  plays ${GENRES[ELEM_GENRE[f.elem]].name}\n${f.desc}`, note: got ? 'DISCOVERED' : 'Both MAX level, side by side on the wheel', noteColor: got ? C.green : C.gold }; }, 24);
     }
     const items = RUNE_IDS.map(id => { const R = RUNES[id], own = save.runes.includes(id); return { icon: 'rune_' + id, dim: !own, lock: !own, sub: own ? '' : R.feat ? 'FEAT' : String(R.cost), subColor: C.gold }; });
     this.grid('RUNES', items, (it, i) => {
       const id = RUNE_IDS[i], R = RUNES[id], own = save.runes.includes(id), feat = R.feat && FEATS.find(f => f.id === R.feat);
-      const d = { name: R.name, color: hexs(ELEM[R.elem].c), desc: `${ELEM[R.elem].name} ${R.type === 'mod' ? '' : 'spell'}\n${R.desc}` };
+      const d = { name: R.name, color: hexs(ELEM[R.elem].c), desc: `${ELEM[R.elem].name} ${R.type === 'mod' ? '' : 'spell'}  -  plays ${GENRES[ELEM_GENRE[R.elem]].name}\n${R.desc}` };
       if (own) d.note = 'IN YOUR POOL';
       else if (feat) { d.note = `Feat: ${feat.desc}`; d.noteColor = C.gold; }
       else d.button = { label: `UNLOCK   ${R.cost}`, ok: save.echoes >= R.cost, cb: () => { save.echoes -= R.cost; save.runes.push(id); persist(); this.build(); } };

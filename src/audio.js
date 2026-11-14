@@ -1,6 +1,6 @@
 // HEXBEAT — WebAudio. A small General-MIDI-flavoured synth plays the song written by music.js.
 // The wheel is the conductor: every wheel step is one beat, so the game's tempo and meter ARE the music's.
-import { Song } from './music.js';
+import { Song, genreMix } from './music.js';
 
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -33,7 +33,7 @@ PATCH.organbass = { ...PATCH.organ, lvl: 0.3 };
 const ELEM_INST = { arcane: 'vibes', fire: 'brass', frost: 'bell', volt: 'square', void: 'organ', nature: 'marimba', steel: 'harpsi' };
 
 export class Audio {
-  constructor(opts) { this.opts = opts; this.ctx = null; this.last = {}; this.song = null; this.barIdx = -1; this.biome = 'crypt'; }
+  constructor(opts) { this.opts = opts; this.ctx = null; this.last = {}; this.song = null; this.barIdx = -1; this.mix = genreMix({ arcane: 1 }); }
   unlock() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     try { const C = window.AudioContext || window.webkitAudioContext; if (C) this.init(new C()); } catch (e) { this.ctx = null; }
@@ -54,9 +54,12 @@ export class Audio {
     const len = Math.floor(c.sampleRate * 1.2), buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.noiseBuf = buf;
-    if (!this.song) this.newSong(this.biome);
+    if (!this.song) this.newSong();
   }
-  newSong(biome) { this.biome = biome || this.biome; this.song = new Song((Math.random() * 4294967296) >>> 0, this.biome); this.barIdx = -1; return this.song; }
+  // Compose a fresh song for the current wheel. The genres come from the spell classes on it.
+  newSong() { this.song = new Song((Math.random() * 4294967296) >>> 0, this.mix); this.barIdx = -1; return this.song; }
+  // elemWeights: { fire: 5, frost: 2, ... } summed from the runes on the wheel. Re-orchestrates the playing song.
+  setMix(elemWeights) { this.mix = genreMix(elemWeights); if (this.song) this.song.setMix(this.mix); }
   info() { return this.song ? this.song.title : ''; }
 
   // ---------- synth ----------
@@ -126,7 +129,7 @@ export class Audio {
       const at = t + e.o * m.dur, len = e.d * m.dur;
       if (e.part === 'drum') { if (busy && e.o !== 0 && e.n !== 'kick' && e.n !== 'snare') continue; if (e.n === 'kick' && e.o === 0) hasKick = true; this.drum(e.n, at, e.v); }
       else if (e.part === 'lead') { this.note(song.leadInst, e.n, at, len, e.v); if (m.boss) this.note('sawlead', e.n - 12, at, len, e.v * 0.5); }
-      else if (e.part === 'bass') this.note(song.g.bass[0] === 'organ' ? 'organbass' : song.g.bass[0], e.n, at, len, e.v);
+      else if (e.part === 'bass') this.note(song.bassInst, e.n, at, len, e.v);
       else { if (busy && e.o !== 0) continue; this.note(e.part.slice(5), e.n, at, len, e.v, 0.8); }
     }
     const acc = bar.accents.includes(m.beat);
