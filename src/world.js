@@ -171,6 +171,7 @@ export class World {
     this.dist = Math.max(4.7 / (t * this.cam.aspect), 6.4 / t);
   }
   burst(x, z, color, n, o) {
+    if (this.parts.length > 700) return;
     if (this.parts.length > 500) n = Math.ceil(n / 3); else if (this.parts.length > 250) n = Math.ceil(n / 2);
     const sp = o.spd || 3;
     for (let k = 0; k < n; k++) { const a = Math.random() * TAU, v = sp * (0.3 + Math.random() * 0.7); this.parts.push({ x, y: 0.4, z, vx: Math.cos(a) * v, vy: (o.up || 0) + Math.random() * 3, vz: Math.sin(a) * v, life: 0.3 + Math.random() * 0.3, max: 0.6, color, size: 0.1 + Math.random() * 0.12, drag: 2.5, grav: 7 }); }
@@ -264,6 +265,18 @@ export class World {
       else if (z.type === 'meteor') { A.add('tele', z.x, 0.1, z.z, z.r * 2, z.r * 2, 0xff7a3d, 0.9, 0, 1); const y = (1 - q) * 14; A.add('glow', z.x + y * 0.3, y, z.z, 2.2, 2.2, 0xff9a4d, 1.6); A.add('orb', z.x + y * 0.3, y + 0.6, z.z, 0.9, 0.9, 0xffffff, 1.5); }
       else if (z.type === 'hazard') { A.add('tele', z.x, 0.1, z.z, z.r * 2, z.r * 2, 0xff3050, 1.2, 0, 1); A.add('disc', z.x, 0.11, z.z, z.r * 2 * q, z.r * 2 * q, 0xff3050, 0.35, 0, 1); }
     }
+    // spotlight objective + compass pip
+    const sp = run.spot;
+    if (sp) {
+      const col = { xp: 0x73eff6, gold: 0xffcd75, heal: 0xff5c7a, drop: 0xff5ccd }[sp.kind], fade = Math.min(1, sp.life / 3);
+      A.add('ringthin', sp.x, 0.1, sp.z, sp.r * 2, sp.r * 2, col, 1.3 * fade, t * 0.6, 1);
+      A.add('disc', sp.x, 0.09, sp.z, sp.r * 2 * sp.q, sp.r * 2 * sp.q, col, 0.45, 0, 1);
+      A.add('disc', sp.x, 0.08, sp.z, sp.r * 2, sp.r * 2, col, 0.1 + 0.06 * run.beat, 0, 1);
+      for (let k = 0; k < 5; k++) A.add('glow', sp.x, k * 1.5, sp.z, 1.6 - k * 0.2, 2.6, col, (0.5 - k * 0.08) * fade);
+      const dx = sp.x - p.x, dz = sp.z - p.z, d = Math.hypot(dx, dz);
+      if (d > 4) { const a = Math.atan2(dz, dx); for (let k = 0; k < 3; k++) A.add('px', p.x + dx / d * (1.6 + k * 0.32), 0.15, p.z + dz / d * (1.6 + k * 0.32), 0.22 - k * 0.05, 0.3 - k * 0.07, col, 1.2 - k * 0.3, a, 1); }
+    }
+    for (const g of run.pickups) if (g.type === 'chest') { const dx = g.x - p.x, dz = g.z - p.z, d = Math.hypot(dx, dz); if (d > 4) A.add('px', p.x + dx / d * 1.6, 0.15, p.z + dz / d * 1.6, 0.22, 0.22, 0xffcd75, 1.2, t * 3, 1); }
     // pickups
     for (const g of run.pickups) {
       const bob = 0.15 + 0.12 * Math.sin(t * 5 + g.x * 3);
@@ -285,7 +298,7 @@ export class World {
       const wob = e.stun > 0 ? 1 : 1 + 0.07 * Math.sin(e.t * 9), flip = e.x > p.x ? -1 : 1;
       const sw = Math.max(0.5, f.w / PPU * sc * (1 - Math.min(0.6, fly * 0.12)));
       M.add('shadow', e.x, 0.02, e.z + 0.05, sw, sw * 0.45, 0xffffff, 0, 0, 1);
-      M.spr(e.spr, e.x, fly, e.z, sc, col, e.flash > 0 ? 0.85 : 0, flip, wob);
+      M.spr(e.spr, e.x, fly, e.z, sc, col, e.flash > 0 ? 0.55 : 0, flip, wob);
       if (e.elite || e.boss) A.add('glow', e.x, 0.1, e.z, 2.4 * sc, 2.4 * sc, e.boss ? e.color : 0xffd24d, 0.3 + 0.15 * run.beat, 0, 1);
       if (e.hexT > 0) M.spr('i_skull', e.x, fly + f.h / PPU * sc + 0.15, e.z, 0.6, 0xe04dff);
       if (e.burnT > 0 && Math.random() < 0.08) this.parts.push({ x: e.x, y: 0.6, z: e.z, vx: 0, vy: 2, vz: 0, life: 0.3, max: 0.3, color: 0xff7a3d, size: 0.2 });
@@ -298,6 +311,7 @@ export class World {
       if (!blink && run.state !== 'dead') M.spr(hero, p.x, p.moving ? Math.abs(Math.sin(t * 14)) * 0.12 : 0, p.z, 1, 0xffffff, p.hurt > 0 ? 0.9 : 0, p.fx, 1 + 0.04 * Math.sin(t * (p.moving ? 14 : 3)));
       A.add('glow', p.x, 0.1, p.z, 3.2, 3.2, drop ? 0xff5ccd : this.b.acc, 0.16 + 0.14 * run.beat + (drop ? 0.25 : 0), 0, 1);
       if (drop) A.add('ringthin', p.x, 0.12, p.z, 2.4 + run.beat, 2.4 + run.beat, 0xff5ccd, 1.2, t * 4, 1);
+      A.add('ringthin', p.x, 0.11, p.z, 1.15 + 0.15 * run.beat, 1.15 + 0.15 * run.beat, 0xffffff, 0.55, 0, 1);
     }
     // orbiting blades
     const ob = run.orbs;

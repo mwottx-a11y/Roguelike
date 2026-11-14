@@ -33,7 +33,7 @@ export function panel(scene, parent, x, y, w, h, fill = C.panel, border = C.line
 export function tap(scene, obj, w, h, cb, o = {}) {
   obj.setSize(w, h); obj.setInteractive({ useHandCursor: true });
   let down = false;
-  obj.on('pointerdown', () => { down = true; if (!o.noScale) obj.setScale((o.base || 1) * 0.94); if (o.instant) cb(); });
+  obj.on('pointerdown', () => { if (performance.now() < (G.lockUntil || 0)) return; down = true; if (!o.noScale) obj.setScale((o.base || 1) * 0.94); if (o.instant) cb(); });
   obj.on('pointerout', () => { down = false; if (!o.noScale) obj.setScale(o.base || 1); });
   obj.on('pointerup', () => { if (!o.noScale) obj.setScale(o.base || 1); if (down && !o.instant) { down = false; cb(); } });
   return obj;

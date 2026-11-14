@@ -103,7 +103,7 @@ export class RunScene extends Phaser.Scene {
     // toasts
     while (run.toasts.length) this.toastQ.push(run.toasts.shift());
     this.toastT -= this.game.loop.delta / 1000;
-    if (this.toastT <= 0 && this.toastQ.length) { const t = this.toastQ.shift(); h.toast.setText(t.text).setColor(hexs(t.color)).setAlpha(1).setScale(1.5); this.tweens.add({ targets: h.toast, scale: 1, duration: 180, ease: 'Back.easeOut' }); this.tweens.add({ targets: h.toast, alpha: 0, delay: 900, duration: 300 }); this.toastT = 0.8; }
+    if (this.toastT <= 0 && this.toastQ.length) { const t = this.toastQ.shift(); h.toast.setScale(1).setText(t.text).setColor(hexs(t.color)).setAlpha(1); const k = Math.min(1, (m.UW - 28) / h.toast.width); h.toast.setScale(k * 1.5); this.tweens.add({ targets: h.toast, scale: k, duration: 180, ease: 'Back.easeOut' }); this.tweens.add({ targets: h.toast, alpha: 0, delay: 900, duration: 300 }); this.toastT = 0.8; }
   }
   wheelSig() { const r = this.run; let s = ''; for (let i = 0; i < r.size; i++) { const q = r.wheel[i]; s += q ? q.id + q.lvl + r.res[i] : '-'; } return s; }
 
@@ -145,12 +145,14 @@ export class RunScene extends Phaser.Scene {
     const m = this.m, o = this.ovRoot = this.add.container(0, 0).setScale(m.S).setDepth(10);
     const dim = this.add.graphics(); dim.fillStyle(0x0b0714, kind === 'over' || kind === 'pause' ? 0.88 : 0.78); dim.fillRect(0, 0, m.UW, m.UH); o.add(dim);
     const z = this.add.zone(m.UW / 2, m.UH / 2, m.UW, m.UH).setInteractive(); o.add(z);
+    if (this.ovKind !== kind && (kind === 'level' || kind === 'relic' || kind === 'shop')) G.lockUntil = performance.now() + 380;
     this.ov = {}; this.ovKind = kind; this.ovData = data; this.swapSel = -1;
     this.root.setAlpha(kind === 'over' ? 0 : 0.35);
     ({ level: this.ovChoice, relic: this.ovChoice, shop: this.ovShop, pause: this.ovPause, over: this.ovOver, tut: this.ovTut })[kind].call(this, o, kind, data);
     if (kind !== 'pause' && kind !== 'tut') { o.setAlpha(0); this.tweens.add({ targets: o, alpha: 1, duration: 140 }); }
   }
-  closeOverlay() { if (this.ovRoot) this.ovRoot.destroy(true); this.ovRoot = null; this.ov = null; this.ovKind = null; this.ovData = null; this.root.setAlpha(1); this.hudTick(true); }
+  closeOverlay() { if (this.ovRoot) this.ovRoot.destroy(true); this.ovRoot = null; this.ov = null; this.ovKind = null; this.ovData = null; this.root.setAlpha(1); this.hudTick(true);
+    for (const p of this.input.manager.pointers) if (p.isDown && !this.joy) this.joy = { id: p.id, ox: p.x, oy: p.y, x: p.x, y: p.y }; }
 
   // editable wheel used on choice / shop / pause screens
   editWheel(o, y, replaceCb) {

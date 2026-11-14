@@ -176,6 +176,7 @@ export const FEATS = [
   { id: 'combo300', name: 'Unstoppable', desc: 'Reach a 300 kill combo.', echo: 200, t: (s, r) => r && r.maxCombo >= 300 },
   { id: 'gold500', name: 'Platinum', desc: 'Hold 500 gold at once.', echo: 80, t: (s, r) => r && r.maxGold >= 500 },
   { id: 'drop5', name: 'Wait For It', desc: 'Use DROP 5 times in one run.', echo: 40, t: (s, r) => r && r.drops >= 5 },
+  { id: 'spot5', name: 'Limelight', desc: 'Claim 5 spotlights in one run.', echo: 50, t: (s, r) => r && r.spots >= 5 },
   { id: 'vol3', name: 'Turn It Up', desc: 'Win on Volume 3.', echo: 300, t: (s, r) => r && r.cleared >= 5 && r.volume >= 3 },
   { id: 'vol6', name: 'Louder', desc: 'Win on Volume 6.', echo: 600, t: (s, r) => r && r.cleared >= 5 && r.volume >= 6 },
   { id: 'vol11', name: 'These Go To Eleven', desc: 'Win on Volume 11.', echo: 2000, t: (s, r) => r && r.cleared >= 5 && r.volume >= 11 },
@@ -197,4 +198,5 @@ export const TIPS = [
   'Echo repeats whatever was cast before it. Put it after your best spell.',
   'Grace Note takes no time at all — a free beat.',
   'Higher Volume means tougher foes and far more Echoes.',
+  'Stand in a SPOTLIGHT until it fills to claim its prize.',
 ];

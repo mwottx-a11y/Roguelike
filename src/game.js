@@ -37,7 +37,7 @@ export class Run {
     this.pending = []; // queued choice screens: 'level' | 'relic'
     this.state = 'play';
     this.time = 0; this.beat = 0;
-    this.c = { cleared: 0, reactions: 0, maxCombo: 0, maxGold: 0, drops: 0, noHitStage: false, fullWheel: false, bossKills: 0, dmgTaken: 0 };
+    this.c = { cleared: 0, reactions: 0, maxCombo: 0, maxGold: 0, drops: 0, noHitStage: false, fullWheel: false, bossKills: 0, dmgTaken: 0, spots: 0 };
     this.toasts = []; this.seenReact = {};
     this.wheelChanged();
     this.startStage(0, 'calm');
@@ -88,14 +88,14 @@ export class Run {
   // ---------- stage flow ----------
   startStage(n, mutId) {
     const biome = BIOMES[n % BIOMES.length];
-    const st = { n, biome, t: 0, dur: 60 + 5 * Math.min(n, 4), spawnAcc: 0, spawnMul: 1, goldMul: 1, xpMul: 1, spdMul: 1, hpMul: 1, dmgMul: 1, shootMul: 1, elites: 1, elitesDone: 0, boss: null, bossDone: false, clearT: 0, hit: false, eventT: 14, mut: MUTATORS.find(m => m.id === mutId) || MUTATORS[0] };
+    const st = { n, biome, t: 0, dur: 60 + 5 * Math.min(n, 4), spawnAcc: 0, spawnMul: 1, goldMul: 1, xpMul: 1, spdMul: 1, hpMul: 1, dmgMul: 1, shootMul: 1, elites: 1, elitesDone: 0, boss: null, bossDone: false, clearT: 0, hit: false, eventT: 14, spotT: 10, mut: MUTATORS.find(m => m.id === mutId) || MUTATORS[0] };
     st.mut.f(st);
     this.stage = st;
     const v = this.volume;
     this.eHp = Math.pow(1.72, n) * (1 + 0.22 * v + 0.012 * v * v) * st.hpMul;
     this.eDmg = Math.pow(1.27, n) * (1 + 0.11 * v) * st.dmgMul;
     this.eSpd = (v >= 10 ? 1.16 : v >= 4 ? 1.08 : 1) * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
-    this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy);
+    this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy); this.spot = null;
     this.state = 'play';
     this.fx.biome(biome);
     this.audio.setRoot(biome.root);
@@ -143,6 +143,18 @@ export class Run {
       let guard = 0;
       while (this.stepT <= 0 && guard++ < 10) { this.stepT += STEP_BASE; this.fireStep(); }
     }
+    const sp = this.spot;
+    if (sp) {
+      sp.life -= dt;
+      if ((p.x - sp.x) ** 2 + (p.z - sp.z) ** 2 < sp.r * sp.r) { sp.q += dt / 2.4; sp.life = Math.max(sp.life, 1); } else sp.q = Math.max(0, sp.q - dt * 0.12);
+      if (sp.q >= 1) {
+        this.spot = null; this.c.spots++; this.fx.ring(sp.x, sp.z, 5, 0xffcd75, 0.5); this.fx.burst(sp.x, sp.z, 0xffcd75, 24, { spd: 6, up: 3 }); this.audio.sfx('levelup'); this.fx.haptic(30);
+        if (sp.kind === 'xp') { this.gainXp(xpNeed(this.level) * 0.7 / (s.xpMul * st.xpMul)); this.toast('ENCORE XP!', 0x73eff6); }
+        else if (sp.kind === 'gold') { const g = 20 + 8 * Math.min(st.n, 8); this.gold += g; this.toast('+' + g + ' GOLD', 0xffcd75); }
+        else if (sp.kind === 'heal') { this.heal(s.maxHp * 0.35); this.toast('HEALED!', 0xff5c7a); }
+        else { this.drop = 100; this.toast('DROP READY!', 0xff5ccd); }
+      } else if (sp.life <= 0) this.spot = null;
+    }
     this.updateOrbs(dt); this.updateTurrets(dt); this.updateShots(dt); this.updateZones(dt);
     this.updateEnemies(dt); this.updateBullets(dt); this.updatePickups(dt);
 
@@ -159,6 +171,8 @@ export class Run {
         if (st.elitesDone < eliteTimes.length && prog >= eliteTimes[st.elitesDone]) { st.elitesDone++; this.spawnElite(prog); }
         st.eventT -= dt;
         if (st.eventT <= 0) { st.eventT = rnd(15, 22); this.spawnEvent(); }
+        st.spotT -= dt;
+        if (st.spotT <= 0 && !this.spot && st.t < st.dur - 12) { st.spotT = rnd(20, 28); const a = rnd(TAU), d = rnd(7, 10); this.spot = { x: p.x + Math.cos(a) * d, z: p.z + Math.sin(a) * d, r: 2.3, q: 0, life: 20, kind: pick(['xp', 'xp', 'gold', 'heal', 'drop']) }; this.toast('SPOTLIGHT!', 0xffcd75); this.audio.sfx('chest'); }
         if (st.t >= st.dur) this.spawnBoss();
       } else if (!st.bossDone) {
         st.spawnAcc += (0.5 + 0.15 * st.n) * dt;
@@ -364,7 +378,7 @@ export class Run {
       else if (elem === 'nature') { e.psnT = 4; e.psn = Math.min(base * 2, e.psn + base * 0.2); }
     }
     if (o.kb && !e.boss) { const dx = e.x - this.p.x, dz = e.z - this.p.z, l = Math.hypot(dx, dz) || 1, k = o.kb / (e.k.scale || 1); e.kx += dx / l * k; e.kz += dz / l * k; }
-    e.hp -= d; e.flash = 0.12;
+    e.hp -= d; e.flash = 0.07;
     if (!o.dot) { this.fx.num(e.x, e.z, d, crit ? 0xffe14d : ELEM[elem].c, crit); this.audio.sfx(crit ? 'crit' : 'hit'); }
     if (e.hp <= 0) this.kill(e);
   }
@@ -564,6 +578,7 @@ export class Run {
     e.hp = e.maxHp = 620 * Math.pow(2.05, n) * (1 + 0.22 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
     e.seq = { slammer: ['walk', 'jump'], caster: ['spiral', 'fan', 'rest', 'summon'], charger: ['aim', 'dash', 'rest'], slamcaster: ['walk', 'jump', 'jump', 'spiral', 'fan'], conductor: ['spiral', 'fan', 'jump', 'jump', 'aim', 'dash', 'aim', 'dash', 'rain', 'summon'] }[e.bt];
     st.arena = { x: p.x, z: p.z - 2, r: 10.5 };
+    this.spot = null;
     st.boss = e; this.toast(e.name, 0xff3050); this.audio.sfx('boss'); this.fx.shake(0.6); this.fx.flash(0xff3050, 0.4);
   }
   bossAI(e, dt) {
