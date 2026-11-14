@@ -23,6 +23,7 @@ for (let r = 0; r < runs; r++) {
   while (run.state !== 'dead' && guard++ < 30 * 60 * 30) {
     while (run.pending.length && (run.state === 'play' || run.state === 'clear')) {
       const kind = run.pending.shift(), ch = kind === 'level' ? run.levelChoices() : run.relicChoices();
+      const fz = ch.find(c => c.kind === 'fuse'); if (fz) { run.applyChoice(fz); continue; }
       const o = ch.find(c => c.kind === 'up') && Math.random() < 0.6 ? ch.find(c => c.kind === 'up') : ch[(Math.random() * ch.length) | 0];
       run.applyChoice(o, run.needsSlot(o) ? (Math.random() * run.size) | 0 : undefined);
     }
@@ -36,7 +37,7 @@ for (let r = 0; r < runs; r++) {
   }
   const s = run.summary();
   res.push(s);
-  console.log(`run ${r}: stage ${s.stage} t=${(s.time / 60).toFixed(1)}m lvl ${s.level} kills ${s.kills} echoes ${s.echoes} hp ${Math.round(run.p.hp)}/${run.s.maxHp} dmgTaken ${s.dmgTaken} wheel ${run.wheel.slice(0, run.size).map(w => w ? w.id + w.lvl : '-').join(',')}`);
+  console.log(`run ${r}: stage ${s.stage} t=${(s.time / 60).toFixed(1)}m lvl ${s.level} kills ${s.kills} echoes ${s.echoes} fus ${s.fusions} size ${run.size} hp ${Math.round(run.p.hp)}/${run.s.maxHp} dmgTaken ${s.dmgTaken} wheel ${run.wheel.slice(0, run.size).map(w => w ? w.id + w.lvl : '-').join(',')}`);
 }
 const avg = k => (res.reduce((a, b) => a + b[k], 0) / res.length).toFixed(1);
 console.log(`AVG stage ${avg('stage')} cleared ${avg('cleared')} level ${avg('level')} kills ${avg('kills')} echoes ${avg('echoes')}`);

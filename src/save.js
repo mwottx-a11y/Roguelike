@@ -8,6 +8,7 @@ const fresh = () => ({
   chars: ['cantor'],
   char: 'cantor',
   runes: RUNE_IDS.filter(id => RUNES[id].cost === 0 && !RUNES[id].feat),
+  fusions: [],
   feats: [],
   volume: 0,
   maxVolume: 0,

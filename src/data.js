@@ -38,6 +38,23 @@ export const RUNES = {
   cresc: { name: 'Crescendo', elem: 'mod', type: 'mod', cost: 0, feat: 'nohit', desc: 'Each pass: +4% damage (max 10 stacks). Resets when you are hit.', up: ['+5%', '+6%', '+7%', '+9%'] },
 };
 export const RUNE_IDS = Object.keys(RUNES);
+
+// Fusions: two MAX-level spells sitting side by side on the wheel merge into one rune (and free a slot).
+export const FUSIONS = [
+  { id: 'f_starfall', a: 'bolt', b: 'wisps', name: 'Starfall', elem: 'arcane', desc: 'A swarm of homing stars that pierce.' },
+  { id: 'f_supernova', a: 'fireball', b: 'meteor', name: 'Supernova', elem: 'fire', desc: 'A colossal meteor that bursts into fireballs.' },
+  { id: 'f_glacier', a: 'nova', b: 'lance', name: 'Glacier', elem: 'frost', desc: 'A freezing ring that hurls lances in every direction.' },
+  { id: 'f_tesla', a: 'chain', b: 'totem', name: 'Tesla Field', elem: 'volt', desc: 'You become the storm: constant lightning for 3 seconds.' },
+  { id: 'f_halo', a: 'blades', b: 'chakram', name: 'Razor Halo', elem: 'steel', desc: 'Eight wide-orbit blades plus twin chakrams.' },
+  { id: 'f_bloom', a: 'thorns', b: 'spores', name: 'Wild Bloom', elem: 'nature', desc: 'Thorn storm and a toxic garden that follows you.' },
+  { id: 'f_horizon', a: 'rift', b: 'hex', name: 'Event Horizon', elem: 'void', desc: 'A vast rift that dooms everything inside, then implodes.' },
+  { id: 'f_thermal', a: 'fireball', b: 'nova', name: 'Thermal Shock', elem: 'frost', desc: 'Frost ring, then a fire ring: everything Shatters.' },
+  { id: 'f_prism', a: 'chain', b: 'beam', name: 'Prism Storm', elem: 'arcane', desc: 'A heavy beam; every foe it hits arcs lightning.' },
+  { id: 'f_boom', a: 'wave', b: 'blades', name: 'Sonic Boom', elem: 'steel', desc: 'A shockwave in all directions. Huge knockback and stun.' },
+];
+for (const f of FUSIONS) RUNES[f.id] = { name: f.name, elem: f.elem, type: 'spell', cost: 0, fusion: true, desc: f.desc, up: [] };
+export const fusionOf = (x, y) => FUSIONS.find(f => (f.a === x && f.b === y) || (f.a === y && f.b === x));
+export const fusionPartners = id => FUSIONS.filter(f => f.a === id || f.b === id).map(f => f.a === id ? f.b : f.a);
 export const MAX_RUNE_LVL = 5;
 
 // In-run stat tomes offered on level up
@@ -49,7 +66,7 @@ export const PASSIVES = {
   magnet: { name: 'Magnet', icon: 'i_magnet', max: 4, desc: '+35% pickup range' },
   area: { name: 'Reverb', icon: 'i_ring', max: 6, desc: '+10% spell size' },
   crit: { name: 'Precision', icon: 'i_star', max: 6, desc: '+7% crit chance' },
-  slot: { name: 'Extra Slot', icon: 'i_plus', max: 4, rare: true, desc: '+1 wheel slot' },
+  slot: { name: 'Extra Slot', icon: 'i_plus', max: 5, rare: true, desc: '+1 wheel slot' },
   multi: { name: 'Polyphony', icon: 'i_multi', max: 2, rare: true, desc: '+1 projectile on most spells' },
   regen: { name: 'Regrowth', icon: 'i_leaf', max: 4, desc: '+0.5 HP per second' },
   armor: { name: 'Plating', icon: 'i_shield', max: 4, desc: '-2 damage from every hit' },
@@ -177,6 +194,8 @@ export const FEATS = [
   { id: 'gold500', name: 'Platinum', desc: 'Hold 500 gold at once.', echo: 80, t: (s, r) => r && r.maxGold >= 500 },
   { id: 'drop5', name: 'Wait For It', desc: 'Use DROP 5 times in one run.', echo: 40, t: (s, r) => r && r.drops >= 5 },
   { id: 'spot5', name: 'Limelight', desc: 'Claim 5 spotlights in one run.', echo: 50, t: (s, r) => r && r.spots >= 5 },
+  { id: 'fuse1', name: 'Alchemist', desc: 'Fuse two runes.', echo: 80, t: (s, r) => r && r.fusions >= 1 },
+  { id: 'fuse3', name: 'Grand Unification', desc: 'Perform 3 fusions in one run.', echo: 300, t: (s, r) => r && r.fusions >= 3 },
   { id: 'vol3', name: 'Turn It Up', desc: 'Win on Volume 3.', echo: 300, t: (s, r) => r && r.cleared >= 5 && r.volume >= 3 },
   { id: 'vol6', name: 'Louder', desc: 'Win on Volume 6.', echo: 600, t: (s, r) => r && r.cleared >= 5 && r.volume >= 6 },
   { id: 'vol11', name: 'These Go To Eleven', desc: 'Win on Volume 11.', echo: 2000, t: (s, r) => r && r.cleared >= 5 && r.volume >= 11 },
@@ -187,6 +206,7 @@ export const FEATS = [
 
 export const TIPS = [
   'Your wheel fires one slot per beat. Order matters.',
+  'Every run composes a brand new soundtrack.',
   'Modifiers affect the NEXT spell. Stack them for huge hits.',
   'Matching elements side by side resonate: +15% damage each.',
   'Fire on a chilled foe: SHATTER. Volt on a burning foe: OVERLOAD.',
@@ -199,4 +219,6 @@ export const TIPS = [
   'Grace Note takes no time at all — a free beat.',
   'Higher Volume means tougher foes and far more Echoes.',
   'Stand in a SPOTLIGHT until it fills to claim its prize.',
+  'Two MAX runes side by side can FUSE into something far stronger.',
+  'More wheel slots change the time signature. Six slots: 6/8, double time.',
 ];

@@ -84,6 +84,7 @@ const FULL = {
 const RUNE_GLYPH = {
   bolt: 'r_bolt', fireball: 'i_flame', nova: 'i_flake', chain: 'i_bolt', blades: 'i_sword', thorns: 'i_leaf', wisps: 'r_wisps', meteor: 'r_meteor',
   lance: 'r_lance', totem: 'r_totem', rift: 'r_rift', hex: 'i_skull', chakram: 'r_chakram', wave: 'i_speaker', spores: 'r_spores', beam: 'r_beam',
+  f_starfall: 'i_star', f_supernova: 'r_meteor', f_glacier: 'i_flake', f_tesla: 'r_totem', f_halo: 'r_chakram', f_bloom: 'r_spores', f_horizon: 'r_rift', f_thermal: 'i_flame', f_prism: 'r_beam', f_boom: 'i_speaker',
   amp: 'r_amp', twin: 'r_twin', echo: 'r_echo', grow: 'r_grow', sharp: 'i_star', grace: 'i_note', cresc: 'r_cresc',
 };
 const DIGITS = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001', '111100111001111', '111100111101111', '111001001001001', '111101111101111', '111101111001111'];
@@ -123,10 +124,11 @@ export function buildAtlas() {
 
   // rune tiles: dark plate, element border, tinted glyph
   for (const id in RUNES) {
-    const col = hex(ELEM[RUNES[id].elem].c), mod = RUNES[id].type === 'mod', f = alloc('rune_' + id, 13, 13), g = FULL[RUNE_GLYPH[id]];
-    ctx.fillStyle = col; ctx.fillRect(f.x + 1, f.y, 11, 13); ctx.fillRect(f.x, f.y + 1, 13, 11);
+    const col = hex(ELEM[RUNES[id].elem].c), mod = RUNES[id].type === 'mod', fus = RUNES[id].fusion, f = alloc('rune_' + id, 13, 13), g = FULL[RUNE_GLYPH[id]];
+    ctx.fillStyle = fus ? '#ffcd75' : col; ctx.fillRect(f.x + 1, f.y, 11, 13); ctx.fillRect(f.x, f.y + 1, 13, 11);
     ctx.fillStyle = mod ? '#3a3350' : '#161226'; ctx.fillRect(f.x + 1, f.y + 1, 11, 11);
     if (mod) { ctx.fillStyle = '#161226'; ctx.fillRect(f.x + 2, f.y + 2, 9, 9); }
+    if (fus) { ctx.fillStyle = '#3a2a10'; ctx.fillRect(f.x + 1, f.y + 1, 11, 11); ctx.fillStyle = '#fff2c0'; for (const [x, y] of [[1, 1], [11, 1], [1, 11], [11, 11]]) ctx.fillRect(f.x + x, f.y + y, 1, 1); }
     ctx.fillStyle = col;
     g.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] !== '.') ctx.fillRect(f.x + 3 + x, f.y + 3 + y, 1, 1); });
   }

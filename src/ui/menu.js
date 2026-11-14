@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { G, C, makeRoot, txt, img, btn, panel, tap, clear, hexs } from './kit.js';
 import { save, persist, resetSave, metaLvl, checkFeats, metaTotals } from '../save.js';
-import { CHARS, META, metaCost, RUNES, RUNE_IDS, ELEM, FEATS, VOLUME_MAX, volumeDesc, TIPS, BIOMES } from '../data.js';
+import { CHARS, META, metaCost, RUNES, RUNE_IDS, ELEM, FEATS, FUSIONS, VOLUME_MAX, volumeDesc, TIPS, BIOMES } from '../data.js';
 
 export class MenuScene extends Phaser.Scene {
   constructor() { super('menu'); }
@@ -9,6 +9,7 @@ export class MenuScene extends Phaser.Scene {
     this.view = 'home'; this.sel = 0; this.confirm = false;
     this.charIdx = Math.max(0, CHARS.findIndex(c => c.id === save.char));
     G.world.reset(); G.world.biome(BIOMES[(save.stats.runs || 0) % BIOMES.length]);
+    G.audio.newSong(BIOMES[(save.stats.runs || 0) % BIOMES.length].id); this.mt = 0.3; this.mb = 0; this.runeTab = 'runes';
     const got = checkFeats(null); if (got.length) persist();
     this.tip = Phaser.Utils.Array.GetRandom(TIPS);
     this.build();
@@ -20,6 +21,9 @@ export class MenuScene extends Phaser.Scene {
     if (G.hidden) return;
     const c = CHARS[this.charIdx];
     G.world.renderMenu(Math.min(0.05, dms / 1000), c.id, c.start);
+    // title music: a freshly composed tune in 4/4
+    this.mt = Math.max(-0.1, this.mt - dms / 1000);
+    if (this.mt <= 0) { this.mt += 0.42; G.audio.step({ beat: this.mb % 4, beats: 4, unit: 4, dur: 0.42 }); this.mb++; }
   }
   header(title) {
     const r = this.root, m = this.m;
@@ -80,8 +84,8 @@ export class MenuScene extends Phaser.Scene {
   pickChar() { const c = CHARS[this.charIdx]; if (save.chars.includes(c.id)) { save.char = c.id; persist(); } this.build(); }
 
   // generic grid + detail layout
-  grid(title, items, detail) {
-    const r = this.root, m = this.m, x = m.cx, cols = 5, cell = 62, y0 = 96 + m.top;
+  grid(title, items, detail, pad = 0) {
+    const r = this.root, m = this.m, x = m.cx, cols = 5, cell = 62, y0 = 96 + m.top + pad;
     this.header(title);
     items.forEach((it, i) => {
       const cx = x - (cols - 1) * cell / 2 + (i % cols) * cell, cy = y0 + Math.floor(i / cols) * cell, c = this.add.container(cx, cy); r.add(c);
@@ -108,6 +112,12 @@ export class MenuScene extends Phaser.Scene {
     });
   }
   runes() {
+    const r0 = this.root, m0 = this.m;
+    btn(this, r0, m0.cx, 66 + m0.top, 200, 24, this.runeTab === 'runes' ? 'SHOW FUSIONS >' : '< SHOW RUNES', () => { this.runeTab = this.runeTab === 'runes' ? 'fusions' : 'runes'; this.sel = 0; this.build(); }, { size: 11, color: C.gold });
+    if (this.runeTab === 'fusions') {
+      const items = FUSIONS.map(f => { const got = (save.fusions || []).includes(f.id); return { icon: 'rune_' + f.id, dim: !got, sub: got ? 'MADE' : '', subColor: C.green }; });
+      return this.grid('FUSIONS', items, (it, i) => { const f = FUSIONS[i], got = (save.fusions || []).includes(f.id); return { name: f.name, color: hexs(ELEM[f.elem].c), desc: `${RUNES[f.a].name} + ${RUNES[f.b].name}\n${f.desc}`, note: got ? 'DISCOVERED' : 'Both MAX level, side by side on the wheel', noteColor: got ? C.green : C.gold }; }, 24);
+    }
     const items = RUNE_IDS.map(id => { const R = RUNES[id], own = save.runes.includes(id); return { icon: 'rune_' + id, dim: !own, lock: !own, sub: own ? '' : R.feat ? 'FEAT' : String(R.cost), subColor: C.gold }; });
     this.grid('RUNES', items, (it, i) => {
       const id = RUNE_IDS[i], R = RUNES[id], own = save.runes.includes(id), feat = R.feat && FEATS.find(f => f.id === R.feat);
@@ -116,7 +126,7 @@ export class MenuScene extends Phaser.Scene {
       else if (feat) { d.note = `Feat: ${feat.desc}`; d.noteColor = C.gold; }
       else d.button = { label: `UNLOCK   ${R.cost}`, ok: save.echoes >= R.cost, cb: () => { save.echoes -= R.cost; save.runes.push(id); persist(); this.build(); } };
       return d;
-    });
+    }, 24);
   }
   feats() {
     const items = FEATS.map(f => { const got = save.feats.includes(f.id); return { icon: 'i_star', tint: got ? 0xffcd75 : 0x4a4266, sub: got ? 'DONE' : '+' + f.echo, subColor: got ? C.green : C.pink }; });

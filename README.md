@@ -39,8 +39,22 @@ Desktop: WASD / arrows, Space = dash, E = drop, Esc = pause.
 Depth: 16 spells, 7 modifiers, elemental reactions (Shatter, Overload, Deep Freeze, Blight),
 neighbour resonance, 24 relics, 12 tomes.
 
+**Fusions.** Two MAX-level spells sitting side by side can merge into one of 10 fusion runes
+(Fireball + Meteor = Supernova, Chain Spark + Storm Totem = Tesla Field, ...). The fusion takes one
+slot and frees the other. The wheel shows a link marker between neighbours that form a recipe.
+
+**Time signatures.** One wheel slot is one beat, so the wheel's size is the meter: 3 slots = 3/4,
+4 = 4/4, 5 = 5/4. At 6 slots a beat becomes an eighth note - 6/8, double time - then 7/8 and 8/8.
+Every boss you beat adds a slot, so the meter evolves through the run.
+
+**Music.** `src/music.js` composes a new song for every stage: it picks a genre suited to the biome
+(baroque, chip rock, synthwave, celtic, latin, funk, jazz, metal), a key and mode, chord progressions
+for a 16-bar AABA form, then writes melody (chord tones on strong beats, stepwise motion, sequenced
+motifs, cadences), bass, comping and drums for whatever meter the wheel is in. `src/audio.js` plays it
+on a small General-MIDI-style synth. `node tools/musictest.mjs` checks the output against theory rules.
+
 Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 7 characters, new runes;
-24 feats; Volume 0–12 difficulty ladder.
+27 feats; a fusion codex; Volume 0–12 difficulty ladder.
 
 ## Layout
 
@@ -50,6 +64,7 @@ Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 7 characters, ne
 | `src/data.js` | runes, relics, enemies, biomes, meta upgrades, feats |
 | `src/world.js` | three.js renderer |
 | `src/sprites.js` | procedural pixel-art atlas |
-| `src/audio.js` | synth + generative music |
+| `src/music.js` | procedural composer (pure data) |
+| `src/audio.js` | synth, sequencing, sound effects |
 | `src/ui/` | Phaser scenes (menu, run HUD, overlays) |
 | `tools/sim.mjs` | headless balance bot: `node tools/sim.mjs <runs> <volume> <metaFraction> [all] [chars]` |

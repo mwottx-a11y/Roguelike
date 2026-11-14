@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { G, C, makeRoot, metrics, txt, img, btn, panel, tap, box, hexs } from './kit.js';
 import { save, persist, checkFeats } from '../save.js';
 import { Run, xpNeed } from '../game.js';
-import { RUNES, ELEM, PASSIVES, RELICS, MAX_RUNE_LVL, BIOMES } from '../data.js';
+import { RUNES, ELEM, PASSIVES, RELICS, MAX_RUNE_LVL, BIOMES, fusionOf, fusionPartners } from '../data.js';
 
 const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -46,6 +46,8 @@ export class RunScene extends Phaser.Scene {
     // wheel strip
     const by = m.UH - m.bot;
     h.wheelY = by - 32; h.wheel = this.wheelRow(r, m.cx, h.wheelY, 32, null);
+    h.meter = txt(this, r, L, by - 66, '', 18, C.cyan, 0, 0.5);
+    h.meterSub = txt(this, r, L, by - 51, '', 8, C.dim, 0, 0.5);
     // action buttons
     const bx = R - 40, mk = (y, label, key, cb) => {
       const c = this.add.container(bx, y), g = this.add.graphics(); c.add(g); r.add(c);
@@ -69,7 +71,13 @@ export class RunScene extends Phaser.Scene {
       if (onTap) tap(this, s, size + 2, size + 2, () => onTap(i), { instant: true });
       w.slots.push(s);
     }
-    w.refresh = () => { for (let i = 0; i < n; i++) { const q = run.wheel[i], s = w.slots[i]; s.im.setFrame(q ? 'rune_' + q.id : 'slot_empty'); s.lv.setText(q ? (q.lvl >= MAX_RUNE_LVL ? 'MAX' : String(q.lvl)) : ''); s.res.setText(run.res[i] ? '+' + run.res[i] : ''); } };
+    // fusion links: a marker between neighbours that form a recipe (grey = not both MAX yet, gold = ready)
+    w.links = [];
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; if (j === i || (n === 2 && i === 1)) continue; const wrap = j === 0, x = wrap ? ((n - 1) / 2) * sp + size / 2 + 5 : (i - (n - 1) / 2) * sp + sp / 2; const t = txt(this, c, x, -size / 2 - 1, 'o', 9, C.dim, 0.5, 1); t.pair = [i, j]; w.links.push(t); }
+    w.refresh = () => {
+      for (let i = 0; i < n; i++) { const q = run.wheel[i], s = w.slots[i]; s.im.setFrame(q ? 'rune_' + q.id : 'slot_empty'); s.lv.setText(q ? (q.fused ? '' : q.lvl >= MAX_RUNE_LVL ? 'MAX' : String(q.lvl)) : ''); s.res.setText(run.res[i] ? '+' + run.res[i] : ''); }
+      for (const t of w.links) { const a = run.wheel[t.pair[0]], b = run.wheel[t.pair[1]], f = a && b && fusionOf(a.id, b.id), ready = f && a.lvl >= MAX_RUNE_LVL && b.lvl >= MAX_RUNE_LVL; t.setVisible(!!f); if (f) { t.setText(ready ? 'FUSE' : 'o-o').setColor(ready ? C.gold : C.dim); } }
+    };
     w.refresh(); return w;
   }
   hudTick(force) {
@@ -81,6 +89,7 @@ export class RunScene extends Phaser.Scene {
     // hp
     box(g, L, 32 + top, 132, 14, 0x2a1020, C.ink);
     const hpq = Math.max(0, p.hp / s.maxHp); g.fillStyle(hpq < 0.3 ? 0xff3050 : 0xe0425e, 1); g.fillRect(L + 2, 34 + top, 128 * hpq, 10); g.fillStyle(0xffffff, 0.25); g.fillRect(L + 2, 34 + top, 128 * hpq, 3);
+    h.meter.setText(run.meter); h.meterSub.setText(run.size >= 6 ? 'DOUBLE TIME' : 'TIME');
     h.hp.setText(`${Math.ceil(p.hp)}/${s.maxHp}`); h.lvl.setText('LV ' + run.level); h.gold.setText(String(run.gold));
     h.time.setText(st.boss ? 'BOSS' : st.bossDone ? 'CLEAR' : fmtTime(Math.max(0, st.dur - st.t))); h.time.setColor(st.boss ? C.red : C.text);
     h.stage.setText(`STAGE ${st.n + 1}  ${st.biome.name}${run.volume ? '  VOL ' + run.volume : ''}`);
@@ -175,7 +184,10 @@ export class RunScene extends Phaser.Scene {
     if (opt.kind === 'rune' || opt.kind === 'up') {
       const R = RUNES[opt.id]; icon = 'rune_' + opt.id; name = R.name; col = ELEM[R.elem].c;
       if (opt.kind === 'rune') { tag = `NEW  ${ELEM[R.elem].name.toUpperCase()}${R.type === 'mod' ? '' : ' SPELL'}`; desc = R.desc; }
-      else { tag = `UPGRADE  LV ${opt.lvl} > ${opt.lvl + 1}`; desc = R.up[opt.lvl - 1]; }
+      else { tag = `UPGRADE  LV ${opt.lvl} > ${opt.lvl + 1}${opt.lvl + 1 >= MAX_RUNE_LVL ? '  (MAX)' : ''}`; desc = R.up[opt.lvl - 1]; }
+      const fp = fusionPartners(opt.id); if (fp.length && h >= 70) desc += '\nFuses with ' + fp.map(id => RUNES[id].name).join(' or ') + ' (both MAX, side by side)';
+    } else if (opt.kind === 'fuse') {
+      const R = RUNES[opt.id]; icon = 'rune_' + opt.id; name = R.name; col = 0xffcd75; tag = `FUSION  ${RUNES[opt.a].name} + ${RUNES[opt.b].name}`; desc = R.desc + '\nMerges both runes into one and frees a slot.';
     } else if (opt.kind === 'passive') { const P = PASSIVES[opt.id]; icon = P.icon; name = P.name; tag = `TOME  ${opt.lvl + 1}/${P.max}`; desc = P.desc; tint = 0xa7f070; col = 0xa7f070; }
     else if (opt.kind === 'relic') { const R = RELICS[opt.id]; icon = R.icon; name = R.name; tag = 'RELIC'; desc = R.desc; tint = 0xffcd75; col = 0xffcd75; }
     else if (opt.kind === 'gold') { icon = 'i_coin'; name = `${opt.v} Gold`; tag = 'TREASURE'; desc = 'A little pocket money.'; tint = 0xffcd75; col = 0xffcd75; }
@@ -200,11 +212,12 @@ export class RunScene extends Phaser.Scene {
     const opts = this.ovData || (isLvl ? run.levelChoices() : run.relicChoices()); this.ovData = opts;
     if (!this._sfxed) G.audio.sfx(isLvl ? 'levelup' : 'chest'); this._sfxed = true;
     const n = opts.length, ch = Math.min(84, (m.UH - 300) / n), top = Math.max(96, (m.UH - (n * (ch + 8) + 190)) / 2 + 40);
-    const title = txt(this, o, x, top - 44, isLvl ? 'LEVEL UP!' : 'RELIC FOUND', 30, isLvl ? C.cyan : C.gold, 0.5, 0.5, { bold: true, stroke: 6 });
+    const fuse = opts.some(q => q.kind === 'fuse');
+    const title = txt(this, o, x, top - 44, fuse ? 'FUSION READY!' : isLvl ? 'LEVEL UP!' : 'RELIC FOUND', 30, fuse ? C.gold : isLvl ? C.cyan : C.gold, 0.5, 0.5, { bold: true, stroke: 6 });
     this.tweens.add({ targets: title, scale: 1.08, duration: 300, yoyo: true, repeat: -1 });
     txt(this, o, x, top - 20, isLvl ? `LEVEL ${run.level}  -  CHOOSE ONE` : 'CHOOSE ONE', 10, C.dim);
     let picked = null;
-    const done = (opt, slot) => { run.applyChoice(opt, slot); G.audio.sfx('pick'); this._sfxed = false; this.closeOverlay(); };
+    const done = (opt, slot) => { run.applyChoice(opt, slot); G.audio.sfx(opt.kind === 'fuse' ? 'fuse' : 'pick'); this._sfxed = false; this.closeOverlay(); };
     const cards = opts.map((opt, i) => this.card(o, x, top + i * (ch + 8) + ch / 2, 336, ch, opt, (op, c) => {
       if (run.needsSlot(op)) { picked = op; this.ov.replace = true; cards.forEach(q => q.setAlpha(q === c ? 1 : 0.4)); this.ov.hint.setText('WHEEL FULL: tap the slot to REPLACE').setColor(C.gold); G.audio.sfx('ui'); }
       else done(op);
@@ -247,7 +260,8 @@ export class RunScene extends Phaser.Scene {
 
   ovPause(o) {
     const m = this.m, run = this.run, x = m.cx, s = run.s; let y = Math.max(70, m.UH / 2 - 230) + m.top;
-    txt(this, o, x, y, 'PAUSED', 30, C.text, 0.5, 0.5, { bold: true, stroke: 6 }); y += 50;
+    txt(this, o, x, y, 'PAUSED', 30, C.text, 0.5, 0.5, { bold: true, stroke: 6 }); y += 28;
+    txt(this, o, x, y, `NOW PLAYING: ${G.audio.info()}  -  ${run.meter}`, 9, C.cyan); y += 34;
     this.editWheel(o, y, () => {}); y += 60;
     const pas = Object.keys(run.passives).map(id => `${PASSIVES[id].name} ${run.passives[id]}`).join('   ') || 'No tomes yet';
     txt(this, o, x, y, pas, 9, C.green, 0.5, 0, { wrap: 330 }); y += 30;
@@ -262,8 +276,8 @@ export class RunScene extends Phaser.Scene {
     const m = this.m, x = m.cx, y = m.UH / 2;
     panel(this, o, x, y, 330, 330, C.panel, 0xff5ccd);
     txt(this, o, x, y - 135, 'HOW TO PLAY', 24, C.pink, 0.5, 0.5, { bold: true });
-    const lines = [[m.touch ? 'DRAG anywhere to move.' : 'WASD / arrows to move.', C.text], ['Your WHEEL casts by itself, one slot per beat.', C.cyan], ['Level up to add RUNES. Their ORDER matters:\nmodifiers boost the next spell.', C.text], ['DASH through danger. Fill the DROP meter\nwith kills for double tempo.', C.gold], ['Survive the timer, beat the boss, go deeper.\nEchoes you earn unlock permanent power.', C.text]];
-    lines.forEach(([s, c], i) => txt(this, o, x, y - 92 + i * 42, s, 11, c, 0.5, 0.5, { ls: 2 }));
+    const lines = [[m.touch ? 'DRAG anywhere to move.' : 'WASD / arrows to move.', C.text], ['Your WHEEL casts by itself, one slot per beat.', C.cyan], ['Level up to add RUNES. Their ORDER matters:\nmodifiers boost the next spell.', C.text], ['DASH through danger. Fill the DROP meter\nwith kills for double tempo.', C.gold], ['Two MAX runes side by side can FUSE.\nMore slots change the time signature.', C.pink], ['Survive the timer, beat the boss, go deeper.', C.text]];
+    lines.forEach(([s, c], i) => txt(this, o, x, y - 96 + i * 37, s, 11, c, 0.5, 0.5, { ls: 2 }));
     btn(this, o, x, y + 128, 180, 40, "LET'S GO", () => { save.seenTutorial = true; persist(); this.closeOverlay(); }, { size: 18, fill: 0x7a1f6a, border: 0xff5ccd, sfx: 'pick' });
   }
   openTutorial() { this.openOverlay('tut'); }
@@ -275,6 +289,7 @@ export class RunScene extends Phaser.Scene {
       save.echoes += sm.echoes; st.echoesTotal += sm.echoes; st.kills += sm.kills; st.runs++; st.time += sm.time; if (sm.won) st.wins++;
       st.bestStage = Math.max(st.bestStage, sm.cleared); st.bestLevel = Math.max(st.bestLevel, sm.level); st.bestCombo = Math.max(st.bestCombo, sm.maxCombo);
       let volUp = false; if (sm.won && run.volume >= save.maxVolume && save.maxVolume < 12) { save.maxVolume++; volUp = true; }
+      for (const id of run.fusedIds) if (!save.fusions.includes(id)) save.fusions.push(id);
       const feats = checkFeats(sm); persist();
       this.banked = { sm, feats, volUp };
     }

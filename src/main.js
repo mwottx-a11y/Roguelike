@@ -4,6 +4,7 @@ import '@fontsource/pixelify-sans/700.css';
 import { buildAtlas } from './sprites.js';
 import { World } from './world.js';
 import { Audio } from './audio.js';
+import { Song } from './music.js';
 import { loadSave, save } from './save.js';
 import { G } from './ui/kit.js';
 import { MenuScene } from './ui/menu.js';
@@ -32,7 +33,7 @@ async function boot() {
     render: { pixelArt: true, antialias: false, powerPreference: 'high-performance' },
     input: { activePointers: 4 }, audio: { noAudio: true }, scene: [Boot, MenuScene, RunScene],
   });
-  G.game = game; window.HEX = G;
+  G.game = game; G.AudioClass = Audio; G.Song = Song; window.HEX = G; // debug/test handle
   let rt = 0;
   const onResize = () => { clearTimeout(rt); rt = setTimeout(() => { G.world.resize(); game.scale.setZoom(1 / dpr()); game.scale.resize(Math.round(window.innerWidth * dpr()), Math.round(window.innerHeight * dpr())); }, 60); };
   window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);

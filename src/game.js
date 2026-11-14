@@ -1,5 +1,5 @@
 // HEXBEAT — run simulation. Pure logic: no DOM, no rendering. The renderer reads our arrays each frame.
-import { RUNES, PASSIVES, RELICS, RELIC_IDS, CHARS, META, ENEMIES, BIOMES, MUTATORS, ELEM, MAX_RUNE_LVL } from './data.js';
+import { RUNES, PASSIVES, RELICS, RELIC_IDS, CHARS, META, ENEMIES, BIOMES, MUTATORS, ELEM, MAX_RUNE_LVL, fusionOf } from './data.js';
 
 const TAU = Math.PI * 2;
 const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
@@ -8,7 +8,8 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const NOFX = new Proxy({}, { get: () => () => {} });
 
 export const xpNeed = l => Math.floor(4 + 3 * l + 0.5 * l * l);
-export const STEP_BASE = 0.36;
+// One wheel slot = one beat. Up to 5 slots a beat is a quarter note; from 6 slots it is an eighth note (double time).
+export const STEP_Q = 0.42;
 
 export class Run {
   constructor({ char, volume = 0, metaLevels = {}, unlocked, fx, audio }) {
@@ -32,12 +33,12 @@ export class Run {
     this.orbs = null;
     this.level = 1; this.xp = 0; this.gold = 0; this.kills = 0; this.combo = 0; this.comboT = 0;
     this.drop = 0; this.dropT = 0;
-    this.step = 0; this.stepT = 0.5; this.loops = 0; this.pend = this.freshPend(); this.last = null; this.cresc = 0; this.crescPct = 0;
+    this.step = 0; this.stepT = 0.5; this.loops = 0; this.mBeat = 0; this.storm = null; this.fusedIds = []; this.pend = this.freshPend(); this.last = null; this.cresc = 0; this.crescPct = 0;
     this.rerolls = this.s.rerolls; this.revivesUsed = 0;
     this.pending = []; // queued choice screens: 'level' | 'relic'
     this.state = 'play';
     this.time = 0; this.beat = 0;
-    this.c = { cleared: 0, reactions: 0, maxCombo: 0, maxGold: 0, drops: 0, noHitStage: false, fullWheel: false, bossKills: 0, dmgTaken: 0, spots: 0 };
+    this.c = { cleared: 0, reactions: 0, maxCombo: 0, maxGold: 0, drops: 0, noHitStage: false, fullWheel: false, bossKills: 0, dmgTaken: 0, spots: 0, fusions: 0 };
     this.toasts = []; this.seenReact = {};
     this.wheelChanged();
     this.startStage(0, 'calm');
@@ -48,7 +49,7 @@ export class Run {
   recalc() {
     const s = {
       dmg: 1, tempo: 1, maxHp: 100, maxHpMul: 1, speed: 4.3, magnet: 1, xpMul: 1, goldMul: 1, crit: 0.05, critMul: 2, armor: 0, regen: 0, area: 1,
-      multi: 0, luck: 0, dropGain: 1, dropDur: 5, rerolls: 1, skipGold: 10, dashes: 1, slots: 4, headStart: 0, revives: 0, echoMul: 1, leech: 0,
+      multi: 0, luck: 0, dropGain: 1, dropDur: 5, rerolls: 1, skipGold: 10, dashes: 1, slots: 3, headStart: 0, revives: 0, echoMul: 1, leech: 0,
       burnMul: 1, reactMul: 1, resMul: 1, modPow: 1, choices: 3, chillDur: 1, elem: {},
     };
     for (const m of META) { const n = this.metaLevels[m.id] || 0; if (n) m.f(s, n); }
@@ -56,11 +57,12 @@ export class Run {
     const P = this.passives;
     s.dmg *= 1 + 0.12 * (P.might || 0); s.tempo *= 1 + 0.06 * (P.tempo || 0); s.maxHp += 20 * (P.vital || 0); s.speed *= 1 + 0.07 * (P.swift || 0);
     s.magnet *= 1 + 0.35 * (P.magnet || 0); s.area *= 1 + 0.1 * (P.area || 0); s.crit += 0.07 * (P.crit || 0); s.slots += P.slot || 0; s.multi += P.multi || 0;
+    s.slots += this.bonusSlots || 0;
     s.regen += 0.5 * (P.regen || 0); s.armor += 2 * (P.armor || 0); s.xpMul *= 1 + 0.1 * (P.growth || 0);
     for (const id of this.relics) RELICS[id].f(s);
     s.maxHp = Math.max(20, Math.round(s.maxHp * s.maxHpMul));
     this.s = s;
-    if (this.p) { this.size = Math.min(8, s.slots); this.p.hp = Math.min(this.p.hp, s.maxHp); }
+    if (this.p) { const z0 = this.size; this.size = Math.min(8, s.slots); this.p.hp = Math.min(this.p.hp, s.maxHp); if (z0 !== this.size) this.wheelChanged(); }
   }
   wheelChanged() {
     const n = this.size;
@@ -80,6 +82,23 @@ export class Run {
     const cr = this.wheel.find((w, i) => i < n && w && w.id === 'cresc');
     this.crescPct = cr ? [0.04, 0.05, 0.06, 0.07, 0.09][cr.lvl - 1] * this.s.modPow : 0;
     if (!cr) this.cresc = 0;
+    let beats = 0; for (let i = 0; i < n; i++) if (!this.wheel[i] || this.wheel[i].id !== 'grace') beats++;
+    this.beats = Math.max(1, beats);
+    const meter = this.beats + '/' + (n >= 6 ? 8 : 4);
+    if (this.meter && meter !== this.meter && this.toasts) this.toast(meter + (n >= 6 && this.meter.endsWith('/4') ? '  DOUBLE TIME!' : ' TIME'), 0x73eff6);
+    this.meter = meter;
+  }
+  stepLen() { return this.size >= 6 ? STEP_Q / 2 : STEP_Q; }
+  // adjacent (circular) pairs of MAX spells that match a recipe
+  fusionReady() {
+    const n = this.size, out = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, a = this.wheel[i], b = this.wheel[j];
+      if (j === i || !a || !b || (n === 2 && i === 1)) continue;
+      const f = fusionOf(a.id, b.id);
+      if (f && a.lvl >= MAX_RUNE_LVL && b.lvl >= MAX_RUNE_LVL) out.push({ kind: 'fuse', id: f.id, i, j, a: a.id, b: b.id });
+    }
+    return out;
   }
   swap(i, j) { const t = this.wheel[i]; this.wheel[i] = this.wheel[j]; this.wheel[j] = t; this.wheelChanged(); }
   freshPend() { return { dmg: 1, area: 1, rep: 0, repPow: 0.75, crit: false, critBonus: 0, any: false }; }
@@ -92,13 +111,15 @@ export class Run {
     st.mut.f(st);
     this.stage = st;
     const v = this.volume;
-    this.eHp = Math.pow(1.72, n) * (1 + 0.22 * v + 0.012 * v * v) * st.hpMul;
-    this.eDmg = Math.pow(1.27, n) * (1 + 0.11 * v) * st.dmgMul;
+    const late = n >= 3 ? 2.3 * Math.pow(1.24, n - 3) : 1; // the wheel hits double time around stage 4; foes toughen to match
+    this.late = late;
+    this.eHp = Math.pow(1.72, n) * late * (1 + 0.22 * v + 0.02 * v * v) * st.hpMul;
+    this.eDmg = Math.pow(1.27, n) * (n >= 3 ? 1.15 : 1) * (1 + 0.11 * v) * st.dmgMul;
     this.eSpd = (v >= 10 ? 1.16 : v >= 4 ? 1.08 : 1) * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
     this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy); this.spot = null;
     this.state = 'play';
     this.fx.biome(biome);
-    this.audio.setRoot(biome.root);
+    this.audio.newSong(biome.id);
     this.toast(biome.name, biome.acc);
     if (st.mut.id !== 'calm') this.toast(st.mut.name.toUpperCase(), 0xffcd75);
     if (st.freeRelic) this.pending.push('relic');
@@ -141,7 +162,7 @@ export class Run {
     if (this.state === 'play') {
       this.stepT -= dt * s.tempo * (this.dropT > 0 ? 2 : 1);
       let guard = 0;
-      while (this.stepT <= 0 && guard++ < 10) { this.stepT += STEP_BASE; this.fireStep(); }
+      while (this.stepT <= 0 && guard++ < 10) { this.stepT += this.stepLen(); this.fireStep(); }
     }
     const sp = this.spot;
     if (sp) {
@@ -195,7 +216,9 @@ export class Run {
     this.fire[i] = 1; this.beat = 1;
     const slot = this.wheel[i];
     const def = slot && RUNES[slot.id];
-    this.audio.step(i, n, def, this.dropT > 0, !!this.stage.boss);
+    if (i === 0) this.mBeat = 0;
+    if (slot && slot.id === 'grace') this.audio.grace();
+    else { this.audio.step({ beat: this.mBeat % this.beats, beats: this.beats, unit: n >= 6 ? 8 : 4, def, slot: i, drop: this.dropT > 0, boss: !!this.stage.boss, dur: this.stepLen() / (s.tempo * (this.dropT > 0 ? 2 : 1)) }); this.mBeat++; }
     if (i === 0) this.fx.pulse();
     if (this.step === 0) {
       this.loops++;
@@ -342,6 +365,46 @@ export class Run {
         this.zones.push({ type: 'cloud', x, z, r: 2.1 * (lv >= 3 ? 1.3 : 1) * A, t: 0, dur: lv >= 5 ? 6 : 4, tick: 0, dmg: 4.5 * L * c.dmg, elem: 'nature', color: col, o });
         break;
       }
+      case 'f_starfall': { const n = 10 + s.multi * 2; for (let k = 0; k < n; k++) this.shoot(k / n * TAU + rnd(0.3), { spd: 9, dmg: 24 * c.dmg, elem: 'arcane', color: 0xfff2a8, type: 'wisp', life: 3.5, pierce: 2, size: 0.36 * Math.sqrt(A), o }); break; }
+      case 'f_supernova': { const t = this.randomNear(9); this.zones.push({ type: 'meteor', x: t ? t.x : p.x, z: t ? t.z : p.z - 3, r: 3.6 * A, t: 0, dur: 0.75, dmg: 160 * c.dmg, elem: 'fire', color: col, o, nova: true }); break; }
+      case 'f_glacier': {
+        this.zones.push({ type: 'nova', x: p.x, z: p.z, r: 0, R: 4.6 * A, t: 0, dur: 0.34, dmg: 32 * c.dmg, elem: 'frost', color: col, hit: new Set(), freeze: true, o, follow: true });
+        for (let k = 0; k < 8; k++) this.shoot(this.loops * 0.4 + k / 8 * TAU, { spd: 22, dmg: 30 * c.dmg, elem: 'frost', color: col, pierce: 99, size: 0.36 * Math.sqrt(A), life: 0.7, long: true, freeze: true, o });
+        break;
+      }
+      case 'f_tesla': this.storm = { t: 3.2, cd: 0, dmg: 15 * c.dmg, o, r: 7 * Math.sqrt(A) }; break;
+      case 'f_halo': {
+        this.orbs = { n: 8, t: 3.6, ang: this.orbs ? this.orbs.ang : 0, r: 2.7 * Math.sqrt(A), dmg: 22 * c.dmg, o, color: 0xffffff };
+        const a = this.aimDir(); for (let k = 0; k < 2; k++) this.shoot(a + (k - 0.5) * 0.7, { spd: 13, dmg: 20 * c.dmg, elem: 'steel', color: col, pierce: 99, type: 'chakram', life: 2.2, size: 0.8 * Math.sqrt(A), o, age: 0, cd: new Map() });
+        break;
+      }
+      case 'f_bloom': {
+        for (let k = 0; k < 14; k++) this.shoot(this.loops * 0.37 + k / 14 * TAU, { spd: 9.5, dmg: 16 * c.dmg, elem: 'nature', color: col, pierce: 5, size: 0.3 * Math.sqrt(A), life: 0.9 * A, o });
+        this.zones.push({ type: 'cloud', x: p.x, z: p.z, r: 3.4 * A, t: 0, dur: 3, tick: 0, dmg: 10 * c.dmg, elem: 'nature', color: col, o, follow: true });
+        break;
+      }
+      case 'f_horizon': { const t = this.randomNear(7); this.zones.push({ type: 'rift', x: t ? t.x : p.x + p.dx * 3, z: t ? t.z : p.z + p.dz * 3, r: 4.4 * A, t: 0, dur: 2.8, tick: 0, dmg: 13 * c.dmg, elem: 'void', color: col, implode: true, implodeMul: 10, hexAll: 30 * c.dmg, o }); break; }
+      case 'f_thermal': {
+        this.zones.push({ type: 'nova', x: p.x, z: p.z, r: 0, R: 4.2 * A, t: 0, dur: 0.3, dmg: 24 * c.dmg, elem: 'frost', color: col, hit: new Set(), o, follow: true });
+        this.after(0.34, () => { this.aoe(this.p.x, this.p.z, 4.2 * A, 30 * c.dmg, 'fire', o, 0xff7a3d); this.audio.sfx('boom'); });
+        break;
+      }
+      case 'f_prism': {
+        const a = this.aimDir(), w = 0.9 * A, len = 14, cx = Math.cos(a), cz = Math.sin(a); let arcs = 0;
+        this.fx.beam(p.x, p.z, p.x + cx * len, p.z + cz * len, col, w * 1.6, 0.28);
+        for (const e of this.enemies.slice()) {
+          if (e.dead) continue; const dx = e.x - p.x, dz = e.z - p.z, al = dx * cx + dz * cz; if (al < 0 || al > len || Math.abs(dx * cz - dz * cx) > w + e.r) continue;
+          this.hit(e, 48 * c.dmg, 'arcane', o);
+          if (arcs++ < 6) { let cur = this.nearest(e.x, e.z, 4.5, new Set([e])), px = e.x, pz = e.z; const seen = new Set([e]); for (let j = 0; j < 3 && cur; j++) { seen.add(cur); this.fx.beam(px, pz, cur.x, cur.z, 0xffe14d, 0.12, 0.14); px = cur.x; pz = cur.z; this.hit(cur, 18 * c.dmg, 'volt', o); cur = this.nearest(px, pz, 4.5, seen); } }
+        }
+        this.audio.sfx('zap'); break;
+      }
+      case 'f_boom': {
+        const R = 6.2 * A; this.fx.ring(p.x, p.z, R * 0.6, 0xffffff, 0.25); this.fx.shake(0.4); this.audio.sfx('wave');
+        for (const e of this.enemies) if (!e.dead && (e.x - p.x) ** 2 + (e.z - p.z) ** 2 < (R + e.r) ** 2 && !e.boss) e.stun = Math.max(e.stun, 1);
+        this.aoe(p.x, p.z, R, 44 * c.dmg, 'steel', { ...o, kb: 10 }, col);
+        break;
+      }
       case 'beam': {
         const a = this.aimDir(), w = 0.45 * (lv >= 3 ? 1.6 : 1) * A, len = 13;
         const go = () => {
@@ -416,6 +479,8 @@ export class Run {
     for (let k = 0; k < 14; k++) this.pickups.push({ type: 'gold', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4, t: 0 });
     for (let k = 0; k < 10; k++) this.pickups.push({ type: 'xp', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4 + st.n * 2, t: 0 });
     this.pending.push('relic');
+    // every boss you beat widens the wheel: the time signature grows with the run
+    if (this.size < 8) { this.bonusSlots = (this.bonusSlots || 0) + 1; this.recalc(); }
     this.heal(this.s.maxHp * 0.25);
     this.state = 'clear'; st.clearT = 2.4;
     this.toast('STAGE CLEAR', 0xffcd75);
@@ -454,6 +519,11 @@ export class Run {
     }
   }
   updateTurrets(dt) {
+    const sm = this.storm;
+    if (sm && sm.t > 0) {
+      sm.t -= dt; sm.cd -= dt;
+      if (sm.cd <= 0) { sm.cd = 0.1; const p = this.p, e = this.randomNear(sm.r); if (e) { this.fx.beam(p.x, p.z, e.x, e.z, 0xffe14d, 0.13, 0.12); this.hit(e, sm.dmg, 'volt', sm.o); const q = this.nearest(e.x, e.z, 4.5, new Set([e])); if (q) { this.fx.beam(e.x, e.z, q.x, q.z, 0xffe14d, 0.1, 0.12); this.hit(q, sm.dmg * 0.8, 'volt', sm.o); } this.audio.sfx('zap'); } }
+    }
     for (let i = this.turrets.length - 1; i >= 0; i--) {
       const t = this.turrets[i]; t.t -= dt; t.cd -= dt;
       if (t.t <= 0) { this.turrets.splice(i, 1); continue; }
@@ -505,12 +575,13 @@ export class Run {
           break;
         case 'rift': case 'cloud':
           z.tick -= dt;
+          if (z.follow) { z.x = p.x; z.z = p.z; }
           if (z.type === 'rift') for (const e of this.enemies) { if (e.dead || e.boss) continue; const dx = z.x - e.x, dz = z.z - e.z, d = Math.hypot(dx, dz); if (d < z.r * 1.5 && d > 0.2) { const f = 5.5 * dt / (e.k.scale || 1); e.x += dx / d * f; e.z += dz / d * f; } }
-          if (z.tick <= 0) { z.tick = z.type === 'rift' ? 0.25 : 0.4; for (const e of this.enemies) if (!e.dead && (e.x - z.x) ** 2 + (e.z - z.z) ** 2 < (z.r + e.r) ** 2) this.hit(e, z.dmg, z.elem, { ...z.o, crit: false }); }
-          if (done && z.implode) this.aoe(z.x, z.z, z.r, z.dmg * 6, 'void', z.o);
+          if (z.tick <= 0) { z.tick = z.type === 'rift' ? 0.25 : 0.4; for (const e of this.enemies) if (!e.dead && (e.x - z.x) ** 2 + (e.z - z.z) ** 2 < (z.r + e.r) ** 2) { if (z.hexAll) { e.hexT = 2; e.hexMul = 1.5; e.hexDmg = z.hexAll; e.hexR = 1.8; } this.hit(e, z.dmg, z.elem, { ...z.o, crit: false }); } }
+          if (done && z.implode) this.aoe(z.x, z.z, z.r, z.dmg * (z.implodeMul || 6), 'void', z.o);
           break;
         case 'meteor':
-          if (done) { this.aoe(z.x, z.z, z.r, z.dmg, 'fire', z.o); this.fx.burst(z.x, z.z, 0xff7a3d, 16, { spd: 7 }); this.fx.shake(0.35); this.audio.sfx('boom'); }
+          if (done) { this.aoe(z.x, z.z, z.r, z.dmg, 'fire', z.o); this.fx.burst(z.x, z.z, 0xff7a3d, 16, { spd: 7 }); this.fx.shake(0.35); this.audio.sfx('boom'); if (z.nova) { for (let k = 0; k < 8; k++) this.shoot(k / 8 * TAU, { x: z.x, z: z.z, spd: 8, dmg: z.dmg * 0.3, elem: 'fire', color: 0xff7a3d, size: 0.5, type: 'fireball', aoe: 1.9, o: z.o, life: 0.6 }); this.zones.push({ type: 'cloud', x: z.x, z: z.z, r: z.r * 0.8, t: 0, dur: 3, tick: 0, dmg: z.dmg * 0.08, elem: 'fire', color: 0xff7a3d, o: z.o }); } }
           break;
         case 'hazard':
           if (done) { if ((p.x - z.x) ** 2 + (p.z - z.z) ** 2 < z.r * z.r) this.hurt(z.dmg); this.fx.ring(z.x, z.z, z.r, 0xff3050, 0.25); this.fx.burst(z.x, z.z, 0xff3050, 10, { spd: 5 }); }
@@ -575,7 +646,7 @@ export class Run {
     const st = this.stage, b = st.biome, n = st.n, p = this.p;
     const e = this.spawn('golem', p.x, p.z - 9, { color: 0xffffff });
     e.boss = true; e.bt = b.boss; e.spr = b.bossSpr; e.scale = 1; e.r = 1.25; e.name = b.bossName + (n >= 5 ? ' ' + 'I'.repeat(Math.min(3, Math.floor(n / 5))) + '+' : '');
-    e.hp = e.maxHp = 620 * Math.pow(2.05, n) * (1 + 0.22 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
+    e.hp = e.maxHp = 620 * Math.pow(2.05, n) * this.late * (1 + 0.22 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
     e.seq = { slammer: ['walk', 'jump'], caster: ['spiral', 'fan', 'rest', 'summon'], charger: ['aim', 'dash', 'rest'], slamcaster: ['walk', 'jump', 'jump', 'spiral', 'fan'], conductor: ['spiral', 'fan', 'jump', 'jump', 'aim', 'dash', 'aim', 'dash', 'rain', 'summon'] }[e.bt];
     st.arena = { x: p.x, z: p.z - 2, r: 10.5 };
     this.spot = null;
@@ -692,6 +763,7 @@ export class Run {
     for (let i = 0; i < this.size; i++) { const w = this.wheel[i]; if (w && w.lvl < MAX_RUNE_LVL) pool.push({ kind: 'up', id: w.id, slot: i, lvl: w.lvl, w: 2.6 }); }
     for (const id of this.unlocked) {
       const def = RUNES[id];
+      if (def.fusion) continue;
       if (def.type === 'mod' && spells < 2) continue;
       if (id === 'cresc' && this.wheel.some(w => w && w.id === 'cresc')) continue;
       pool.push({ kind: 'rune', id, w: (empty > 0 ? 2.2 : 0.5) * (def.type === 'mod' ? 0.7 : 1) });
@@ -701,8 +773,8 @@ export class Run {
       if (id === 'slot' && s.slots >= 8) continue;
       pool.push({ kind: 'passive', id, lvl: l, w: P.rare ? 0.35 * (1 + s.luck) * (id === 'slot' && empty === 0 ? 2.5 : 1) : 1 });
     }
-    const out = [];
-    for (let k = 0; k < s.choices && pool.length; k++) {
+    const out = this.fusionReady().slice(0, 2);
+    for (let k = out.length; k < s.choices && pool.length; k++) {
       let tot = 0; for (const o of pool) tot += o.w;
       let r = Math.random() * tot, idx = 0; for (; idx < pool.length - 1; idx++) { r -= pool[idx].w; if (r <= 0) break; }
       const o = pool.splice(idx, 1)[0]; out.push(o);
@@ -726,6 +798,15 @@ export class Run {
         this.wheel[i] = { id: o.id, lvl: 1 }; break;
       }
       case 'up': { const w = this.wheel[o.slot]; if (w && w.id === o.id) w.lvl = Math.min(MAX_RUNE_LVL, w.lvl + 1); else { const q = this.wheel.find(q => q && q.id === o.id && q.lvl < MAX_RUNE_LVL); if (q) q.lvl++; } break; }
+      case 'fuse': {
+        const a = this.wheel[o.i], b = this.wheel[o.j];
+        if (!a || !b || a.id !== o.a || b.id !== o.b) break;
+        this.wheel[o.i] = { id: o.id, lvl: MAX_RUNE_LVL, fused: true }; this.wheel[o.j] = null;
+        this.c.fusions++; if (!this.fusedIds.includes(o.id)) this.fusedIds.push(o.id);
+        this.toast('FUSION: ' + RUNES[o.id].name.toUpperCase() + '!', ELEM[RUNES[o.id].elem].c);
+        this.fx.flash(0xffffff, 0.7); this.fx.shake(0.6); this.fx.ring(this.p.x, this.p.z, 8, ELEM[RUNES[o.id].elem].c, 0.6); this.fx.burst(this.p.x, this.p.z, 0xffcd75, 40, { spd: 8, up: 3 });
+        break;
+      }
       case 'passive': this.passives[o.id] = (this.passives[o.id] || 0) + 1; this.recalc(); if (o.id === 'vital') this.heal(20); break;
       case 'relic': { const hp0 = this.s.maxHp; this.relics.push(o.id); this.recalc(); if (this.s.maxHp > hp0) this.heal(this.s.maxHp - hp0); break; }
       case 'gold': this.gold += o.v; break;
