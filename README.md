@@ -19,8 +19,8 @@ bullet-hell bosses + a generative rhythm toy.
 
 ```
 npm install
-npm run dev        # dev server (open the printed URL on your phone)
-npm run build      # static site in dist/
+npm run dev        # dev server, entry is /game.html
+npm run build      # static site in docs/ (committed; GitHub Pages serves it)
 SINGLE=1 npx vite build   # one self-contained HTML file in dist-single/
 ```
 
