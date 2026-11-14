@@ -155,7 +155,7 @@ export const MUTATORS = [
 ];
 
 export const VOLUME_MAX = 12;
-export const volumeDesc = v => v === 0 ? 'Standard difficulty.' : `Enemies +${v * 14}% HP, +${v * 8}% dmg. Echoes +${v * 25}%.` + (v >= 4 ? ' Faster foes.' : '') + (v >= 8 ? ' Bosses enraged.' : '');
+export const volumeDesc = v => v === 0 ? 'Standard difficulty.' : `Enemies +${v * 22}% HP, +${v * 11}% dmg. Echoes +${v * 25}%.` + (v >= 4 ? ' Faster foes.' : '') + (v >= 8 ? ' Bosses enraged.' : '');
 
 export const FEATS = [
   { id: 'first', name: 'Sound Check', desc: 'Finish a run.', echo: 20, t: (s, r) => r },

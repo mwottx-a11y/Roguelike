@@ -191,7 +191,9 @@ export class World {
     this.main.uniforms.uCenter.value.copy(this.center); this.add.uniforms.uCenter.value.copy(this.center);
     this.final.uniforms.uFlash.value.set(this.flashC.r, this.flashC.g, this.flashC.b, this.flashA);
     this.final.uniforms.uDrop.value += ((drop ? 1 : 0) - this.final.uniforms.uDrop.value) * Math.min(1, dt * 6);
-    this.bloom.enabled = !!this.opts.bloom;
+    this.bloom.enabled = !!this.opts.bloom && !this.autoLow;
+    // adaptive quality: if frames stay slow, drop the bloom pass
+    if (dt > 0) { this.slow = (this.slow || 0) * 0.98 + (dt > 0.03 ? 0.02 : 0); if (this.slow > 0.7 && this.t > 6) this.autoLow = true; }
     this.bloom.strength = 0.55 + beat * 0.12 + (drop ? 0.2 : 0);
     this.main.begin(); this.add.begin();
     this.drawProps(cx, cz, beat);
@@ -248,6 +250,7 @@ export class World {
   render(run, dt) {
     const p = run.p, t = this.t, M = this.main, A = this.add, F = this.frames;
     const drop = run.dropT > 0, st = run.stage;
+    if (p.hp > 0 && p.hp < run.s.maxHp * 0.3 && this.flashA < 0.16) { this.flashC.set(0xff1030); this.flashA = 0.1 + 0.08 * Math.sin(t * 7); }
     this.frame(dt, p.x, p.z, run.beat, drop);
     const u = this.fu;
     if (st.arena) { u.uArena.value = 1; u.uArenaPos.value.set(st.arena.x, st.arena.r + 0.5, st.arena.z); for (let k = 0; k < 40; k++) { const a = k / 40 * TAU + t * 0.2; A.add('glow', st.arena.x + Math.cos(a) * (st.arena.r + 0.5), 0.1 + 0.4 * Math.abs(Math.sin(t * 5 + k)), st.arena.z + Math.sin(a) * (st.arena.r + 0.5), 0.9, 1.3, 0xff3050, 0.6); } } else u.uArena.value = 0;
@@ -318,7 +321,7 @@ export class World {
     const t = this.t, beat = Math.pow(1 - (t * 1.6) % 1, 3);
     if ((t * 1.6) % 4 < dt * 1.6) this.ringT = 0;
     const cx = Math.sin(t * 0.1) * 6, cz = t * 0.7;
-    this.frame(dt, cx, cz - 2.2, beat, false);
+    this.frame(dt, cx, cz + 1.6, beat, false);
     this.fu.uArena.value = 0;
     const M = this.main, A = this.add;
     M.add('shadow', cx, 0.02, cz + 0.05, 1.8, 0.8, 0xffffff, 0, 0, 1);

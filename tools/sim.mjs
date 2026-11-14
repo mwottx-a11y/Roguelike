@@ -2,7 +2,8 @@
 import { Run } from '../src/game.js';
 import { META, RUNES } from '../src/data.js';
 const runs = +process.argv[2] || 10, volume = +process.argv[3] || 0, rank = +process.argv[4] || 0;
-const starters = Object.keys(RUNES).filter(id => RUNES[id].cost === 0 && !RUNES[id].feat);
+const starters = process.argv[5] ? Object.keys(RUNES) : Object.keys(RUNES).filter(id => RUNES[id].cost === 0 && !RUNES[id].feat);
+const chars = (process.argv[6] || 'cantor').split(',');
 const metaLevels = {}; for (const m of META) metaLevels[m.id] = Math.min(m.max, Math.round(m.max * rank));
 function bot(run) {
   const p = run.p; let fx = 0, fz = 0;
@@ -17,7 +18,7 @@ function bot(run) {
 }
 const res = [];
 for (let r = 0; r < runs; r++) {
-  const run = new Run({ char: 'cantor', volume, metaLevels, unlocked: starters });
+  const run = new Run({ char: chars[r % chars.length], volume, metaLevels, unlocked: starters });
   const dt = 1 / 30; let guard = 0;
   while (run.state !== 'dead' && guard++ < 30 * 60 * 30) {
     while (run.pending.length && (run.state === 'play' || run.state === 'clear')) {

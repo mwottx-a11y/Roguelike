@@ -38,7 +38,7 @@ export class Run {
     this.state = 'play';
     this.time = 0; this.beat = 0;
     this.c = { cleared: 0, reactions: 0, maxCombo: 0, maxGold: 0, drops: 0, noHitStage: false, fullWheel: false, bossKills: 0, dmgTaken: 0 };
-    this.toasts = [];
+    this.toasts = []; this.seenReact = {};
     this.wheelChanged();
     this.startStage(0, 'calm');
     for (let i = 0; i < this.s.headStart; i++) { this.level++; this.pending.push('level'); }
@@ -92,9 +92,9 @@ export class Run {
     st.mut.f(st);
     this.stage = st;
     const v = this.volume;
-    this.eHp = Math.pow(1.5, n) * (1 + 0.14 * v) * st.hpMul;
-    this.eDmg = Math.pow(1.2, n) * (1 + 0.08 * v) * st.dmgMul;
-    this.eSpd = (v >= 4 ? 1.08 : 1) * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
+    this.eHp = Math.pow(1.72, n) * (1 + 0.22 * v + 0.012 * v * v) * st.hpMul;
+    this.eDmg = Math.pow(1.27, n) * (1 + 0.11 * v) * st.dmgMul;
+    this.eSpd = (v >= 10 ? 1.16 : v >= 4 ? 1.08 : 1) * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
     this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy);
     this.state = 'play';
     this.fx.biome(biome);
@@ -151,8 +151,8 @@ export class Run {
       st.t += dt;
       if (!st.boss) {
         const prog = Math.min(1, st.t / st.dur);
-        const cap = 110 + 18 * Math.min(st.n, 6);
-        const rate = (2.2 + 0.7 * Math.min(st.n, 8)) * (0.6 + 1.6 * prog) * st.spawnMul;
+        const cap = 110 + 20 * Math.min(st.n, 7);
+        const rate = (2.2 + 0.8 * Math.min(st.n, 10)) * (0.6 + 1.6 * prog) * st.spawnMul * (1 + 0.05 * this.volume);
         st.spawnAcc += rate * dt;
         while (st.spawnAcc >= 1) { st.spawnAcc -= 1; if (this.enemies.length < cap) this.spawnRoster(prog); }
         const eliteTimes = st.elites >= 2 ? [0.25, 0.45, 0.65, 0.85] : [0.4, 0.75];
@@ -170,6 +170,7 @@ export class Run {
       if (st.clearT <= 0 && !this.pending.length) { this.state = 'shop'; }
     }
     this.enemies = this.enemies.filter(e => !e.dead);
+    if (this.purge) { this.purge = false; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy); }
     if (this.gold > this.c.maxGold) this.c.maxGold = this.gold;
   }
 
@@ -353,10 +354,10 @@ export class Run {
     if (s.frostbite && e.chillT > 0) d *= 1.35;
     if (!o.noReact && !o.dot) {
       const rm = s.reactMul;
-      if (elem === 'fire' && e.chillT > 0) { e.chillT = 0; this.react(e, 0x9ff3ff); this.aoe(e.x, e.z, 2, base * 1.6 * rm, 'steel', { noReact: true }, 0x9ff3ff); }
-      else if (elem === 'volt' && e.burnT > 0) { e.burnT = 0; this.react(e, 0xffb347); this.aoe(e.x, e.z, 2.2, base * 1.4 * rm, 'fire', { noReact: true }, 0xffb347); }
-      else if (elem === 'frost' && e.shockT > 0) { e.shockT = 0; this.react(e, 0xffffff); e.stun = Math.max(e.stun, e.boss ? 0.5 : 1.6); d += base * s.dmg * 1.2 * rm; }
-      else if (elem === 'void' && e.psnT > 0) { this.react(e, 0xc77dff); const ps = e.psn * 1.5 * rm; for (const q of this.enemies) if (!q.dead && q !== e && (q.x - e.x) ** 2 + (q.z - e.z) ** 2 < 9) { q.psn = Math.max(q.psn, ps); q.psnT = 4; } d += base * s.dmg * 0.8 * rm; }
+      if (elem === 'fire' && e.chillT > 0) { e.chillT = 0; this.react(e, 0x9ff3ff, 'SHATTER'); this.aoe(e.x, e.z, 2, base * 1.6 * rm, 'steel', { noReact: true }, 0x9ff3ff); }
+      else if (elem === 'volt' && e.burnT > 0) { e.burnT = 0; this.react(e, 0xffb347, 'OVERLOAD'); this.aoe(e.x, e.z, 2.2, base * 1.4 * rm, 'fire', { noReact: true }, 0xffb347); }
+      else if (elem === 'frost' && e.shockT > 0) { e.shockT = 0; this.react(e, 0xffffff, 'DEEP FREEZE'); e.stun = Math.max(e.stun, e.boss ? 0.5 : 1.6); d += base * s.dmg * 1.2 * rm; }
+      else if (elem === 'void' && e.psnT > 0) { this.react(e, 0xc77dff, 'BLIGHT'); const ps = e.psn * 1.5 * rm; for (const q of this.enemies) if (!q.dead && q !== e && (q.x - e.x) ** 2 + (q.z - e.z) ** 2 < 9) { q.psn = Math.max(q.psn, ps); q.psnT = 4; } d += base * s.dmg * 0.8 * rm; }
       if (elem === 'fire') { e.burnT = 3; e.burn = Math.max(e.burn, base * 0.3); }
       else if (elem === 'frost') e.chillT = 2.5 * s.chillDur;
       else if (elem === 'volt') e.shockT = 3;
@@ -367,7 +368,7 @@ export class Run {
     if (!o.dot) { this.fx.num(e.x, e.z, d, crit ? 0xffe14d : ELEM[elem].c, crit); this.audio.sfx(crit ? 'crit' : 'hit'); }
     if (e.hp <= 0) this.kill(e);
   }
-  react(e, color) { this.c.reactions++; this.fx.ring(e.x, e.z, 1.8, color, 0.3); this.fx.burst(e.x, e.z, color, 5, { spd: 4 }); this.audio.sfx('react'); }
+  react(e, color, name) { this.c.reactions++; if (!this.seenReact[name]) { this.seenReact[name] = 1; this.toast(name + '!', color); } this.fx.ring(e.x, e.z, 1.8, color, 0.3); this.fx.burst(e.x, e.z, color, 5, { spd: 4 }); this.audio.sfx('react'); }
   aoe(x, z, r, dmg, elem, o = {}, color) {
     this.fx.ring(x, z, r, color || ELEM[elem].c, 0.28);
     for (const e of this.enemies) { if (!e.dead && (e.x - x) ** 2 + (e.z - z) ** 2 < (r + e.r) ** 2) this.hit(e, dmg, elem, o); }
@@ -376,7 +377,7 @@ export class Run {
     if (e.dead) return;
     e.dead = true; this.kills++; this.combo++; this.comboT = 2.5; if (this.combo > this.c.maxCombo) this.c.maxCombo = this.combo;
     const s = this.s, st = this.stage;
-    if (this.dropT <= 0) this.drop = Math.min(100, this.drop + (0.75 + Math.min(1.5, this.combo * 0.01)) * s.dropGain * (e.elite ? 8 : 1));
+    if (this.dropT <= 0 && this.drop < 100) { this.drop = Math.min(100, this.drop + (0.75 + Math.min(1.5, this.combo * 0.01)) * s.dropGain * (e.elite ? 8 : 1)); if (this.drop >= 100) { this.toast('DROP READY!', 0xff5ccd); this.audio.sfx('chest'); } }
     this.fx.burst(e.x, e.z, e.color || 0xffffff, e.boss ? 60 : e.elite ? 20 : 4, { spd: e.boss ? 8 : 3.5 });
     this.audio.sfx('kill');
     if (s.leech && Math.random() < s.leech) this.heal(2);
@@ -397,7 +398,7 @@ export class Run {
     if (!st.hit) this.c.noHitStage = true;
     this.fx.shake(1); this.fx.flash(0xffffff, 0.8); this.fx.hitstop(0.25); this.audio.sfx('bossDie');
     for (const q of this.enemies) if (!q.dead && !q.boss) { q.dead = true; this.fx.burst(q.x, q.z, q.color, 5, {}); this.pickups.push({ type: 'xp', x: q.x, z: q.z, v: q.k.xp, t: 0 }); }
-    this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy);
+    this.purge = true;
     for (let k = 0; k < 14; k++) this.pickups.push({ type: 'gold', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4, t: 0 });
     for (let k = 0; k < 10; k++) this.pickups.push({ type: 'xp', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4 + st.n * 2, t: 0 });
     this.pending.push('relic');
@@ -411,7 +412,7 @@ export class Run {
     if (p.inv > 0 || this.state !== 'play') return;
     const d = Math.max(1, Math.round(dmg - s.armor));
     p.hp -= d; p.inv = 0.7; p.hurt = 0.3; this.stage.hit = true; this.cresc = 0; this.c.dmgTaken += d;
-    this.fx.shake(0.45); this.fx.flash(0xff2040, 0.35); this.audio.sfx('hurt'); this.fx.haptic(40);
+    this.fx.shake(0.45); this.fx.flash(0xff2040, 0.35); this.fx.hitstop(0.07); this.audio.sfx('hurt'); this.fx.haptic(40);
     if (s.feedback) this.aoe(p.x, p.z, 3.2 * s.area, 30, 'steel', { kb: 6 }, 0xff5ccd);
     if (p.hp <= 0) {
       if (this.revivesUsed < s.revives) { this.revivesUsed++; p.hp = Math.round(s.maxHp * 0.5); p.inv = 2.5; this.aoe(p.x, p.z, 7, 80, 'fire', { kb: 9 }, 0xffcd75); this.fx.flash(0xffcd75, 0.8); this.toast('REVIVED!', 0xffcd75); this.audio.sfx('levelup'); }
@@ -480,7 +481,7 @@ export class Run {
   updateZones(dt) {
     const p = this.p;
     for (let i = this.zones.length - 1; i >= 0; i--) {
-      const z = this.zones[i]; z.t += dt;
+      const z = this.zones[i]; if (!z) continue; z.t += dt;
       const done = z.t >= z.dur;
       switch (z.type) {
         case 'nova':
@@ -507,7 +508,7 @@ export class Run {
   updateBullets(dt) {
     const p = this.p;
     for (let i = this.bullets.length - 1; i >= 0; i--) {
-      const b = this.bullets[i]; b.x += b.vx * dt; b.z += b.vz * dt; b.life -= dt;
+      const b = this.bullets[i]; if (!b) continue; b.x += b.vx * dt; b.z += b.vz * dt; b.life -= dt;
       if (b.life <= 0) { this.bullets.splice(i, 1); continue; }
       if ((b.x - p.x) ** 2 + (b.z - p.z) ** 2 < 0.2) { if (p.inv <= 0) { this.hurt(b.dmg); this.bullets.splice(i, 1); } }
     }
@@ -560,7 +561,7 @@ export class Run {
     const st = this.stage, b = st.biome, n = st.n, p = this.p;
     const e = this.spawn('golem', p.x, p.z - 9, { color: 0xffffff });
     e.boss = true; e.bt = b.boss; e.spr = b.bossSpr; e.scale = 1; e.r = 1.25; e.name = b.bossName + (n >= 5 ? ' ' + 'I'.repeat(Math.min(3, Math.floor(n / 5))) + '+' : '');
-    e.hp = e.maxHp = 620 * Math.pow(1.85, n) * (1 + 0.14 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
+    e.hp = e.maxHp = 620 * Math.pow(2.05, n) * (1 + 0.22 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
     e.seq = { slammer: ['walk', 'jump'], caster: ['spiral', 'fan', 'rest', 'summon'], charger: ['aim', 'dash', 'rest'], slamcaster: ['walk', 'jump', 'jump', 'spiral', 'fan'], conductor: ['spiral', 'fan', 'jump', 'jump', 'aim', 'dash', 'aim', 'dash', 'rain', 'summon'] }[e.bt];
     st.arena = { x: p.x, z: p.z - 2, r: 10.5 };
     st.boss = e; this.toast(e.name, 0xff3050); this.audio.sfx('boss'); this.fx.shake(0.6); this.fx.flash(0xff3050, 0.4);

@@ -183,9 +183,10 @@ export class RunScene extends Phaser.Scene {
     box(g, -w / 2, -h / 2, w, h, C.panel, col);
     g.fillStyle(col, 0.12); g.fillRect(-w / 2 + 2, -h / 2 + 2, 56, h - 4);
     const ic = img(this, c, -w / 2 + 30, 0, icon, icon.startsWith('rune_') ? 3 : 4, tint);
-    txt(this, c, -w / 2 + 66, -h / 2 + 8, tag, 9, hexs(col), 0, 0, { bold: true });
-    txt(this, c, -w / 2 + 66, -h / 2 + 20, name, 16, C.text, 0, 0, { bold: true });
-    txt(this, c, -w / 2 + 66, -h / 2 + 41, desc, 10, C.dim, 0, 0, { wrap: w - 76 - (price ? 50 : 0), ls: 1 });
+    const sm = h < 70;
+    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 2 : 8), tag, 9, hexs(col), 0, 0);
+    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 12 : 20), name, sm ? 14 : 16, C.text, 0, 0);
+    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 30 : 41), desc, sm ? 9 : 10, C.dim, 0, 0, { wrap: w - 76 - (price ? 50 : 0), ls: 1 });
     if (price) c.price = txt(this, c, w / 2 - 10, 0, String(price), 16, C.gold, 1, 0.5, { bold: true });
     c.ic = ic; c.gfx = g;
     tap(this, c, w, h, () => cb(opt, c));
