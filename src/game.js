@@ -28,7 +28,7 @@ export class Run {
     this.recalc();
     this.size = Math.min(MAX_SLOTS, this.s.slots);
     this.char.start.forEach((id, i) => { this.wheel[i] = { id, lvl: 1 }; });
-    this.p = { x: 0, z: 0, hp: this.s.maxHp, inv: 0, dashT: 0, dashCd: 0, dashN: this.s.dashes, dx: 0, dz: 1, fx: 0, fz: 1, moving: false, hurt: 0 };
+    this.p = { x: 0, z: 0, hp: this.s.maxHp, inv: 0, dashT: 0, dashCd: 0, dashN: this.s.dashes, dx: 0, dz: 1, fx: 1, fz: 1, moving: false, hurt: 0 };
     this.input = { x: 0, z: 0, dash: false, drop: false };
     this.enemies = []; this.shots = []; this.bullets = []; this.pickups = []; this.zones = []; this.turrets = []; this.timers = [];
     this.orbs = null;

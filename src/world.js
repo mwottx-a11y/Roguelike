@@ -12,12 +12,15 @@ const PPU = 12; // art pixels per world unit
 
 const SPRITE_VS = `
 attribute vec3 iPos; attribute vec4 iSR; attribute vec4 iUV; attribute vec4 iCol;
-uniform vec3 uCenter;
+uniform vec3 uCenter; uniform float uGain;
 varying vec2 vUv; varying vec4 vCol; varying float vD;
 void main(){
   vUv = iUV.xy + uv * iUV.zw; vCol = iCol;
+  // iSR.w: 0 billboard, 1 flat on the ground; +2 marks a priority effect that is never dimmed
+  float pri = step(1.5, iSR.w), flat_ = iSR.w - 2.0 * pri;
+  vCol.a *= mix(uGain, 1.0, pri);
   vec2 p = position.xy; vec3 wp;
-  if (iSR.w > 0.5) { vec2 q = vec2(p.x, p.y - 0.5) * iSR.xy; float c = cos(iSR.z), s = sin(iSR.z); q = vec2(q.x*c - q.y*s, q.x*s + q.y*c); wp = iPos + vec3(q.x, 0.0, q.y); }
+  if (flat_ > 0.5) { vec2 q = vec2(p.x, p.y - 0.5) * iSR.xy; float c = cos(iSR.z), s = sin(iSR.z); q = vec2(q.x*c - q.y*s, q.x*s + q.y*c); wp = iPos + vec3(q.x, 0.0, q.y); }
   else { vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]); vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]); wp = iPos + right * p.x * iSR.x + up * p.y * iSR.y; }
   vD = length(iPos.xz - uCenter.xz);
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
@@ -44,15 +47,24 @@ class Batch {
     g.setIndex([0, 1, 2, 0, 2, 3]);
     const mk = (name, size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * size), size); a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(name, a); return a; };
     this.aPos = mk('iPos', 3); this.aSR = mk('iSR', 4); this.aUV = mk('iUV', 4); this.aCol = mk('iCol', 4);
-    this.uniforms = { map: { value: tex }, uFog: { value: new THREE.Color() }, uCenter: { value: new THREE.Vector3() }, uAdd: { value: additive ? 1 : 0 } };
+    this.uniforms = { map: { value: tex }, uFog: { value: new THREE.Color() }, uCenter: { value: new THREE.Vector3() }, uAdd: { value: additive ? 1 : 0 }, uGain: { value: 1 } };
+    this.additive = additive; this.pri = false; this.load = 0;
     const m = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: SPRITE_VS, fragmentShader: SPRITE_FS, side: THREE.DoubleSide, transparent: additive, depthWrite: !additive, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
     this.mesh = new THREE.Mesh(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = additive ? 2 : 1;
     this.geo = g;
   }
-  begin() { this.n = 0; }
+  begin() { this.n = 0; this.load = 0; this.pri = false; }
   // billboard anchored at feet (x,y,z); w<0 flips. flat=1 lays the quad on the ground, centred, rotated by rot.
   add(frame, x, y, z, w, h, col, a = 0, rot = 0, flat = 0) {
     const f = this.frames[frame]; if (!f || this.n >= this.cap) return;
+    if (this.additive) {
+      if (this.pri) flat += 2;
+      else {
+        // big effects are drawn fainter, and we total up how much light is on screen (see World.frame)
+        const area = Math.abs(w * h); if (area > 6) a *= Math.sqrt(6 / area);
+        this.load += Math.min(area, 60) * Math.min(a, 1.4);
+      }
+    }
     const i = this.n++, S = this.as;
     this.aPos.array.set([x, y, z], i * 3);
     this.aSR.array.set([w, h, rot, flat], i * 4);
@@ -106,6 +118,10 @@ const FINAL = {
     vec2 o = (vUv - 0.5); float r = dot(o, o);
     vec2 ca = o * r * (0.012 + 0.03 * uDrop);
     vec3 c = vec3(texture2D(tDiffuse, vUv - ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv + ca).b);
+    // Overlapping effects add up past white. Compress highlights by scaling all channels together, so a pile
+    // of orange stays orange instead of bleaching the screen.
+    float mx = max(c.r, max(c.g, c.b));
+    if (mx > 0.7) c *= (0.7 + (mx - 0.7) / (1.0 + (mx - 0.7) * 3.4)) / mx;
     c *= 1.0 - 0.55 * smoothstep(0.12, 0.6, r);
     c = mix(c, c * vec3(1.15, 0.9, 1.25), uDrop * 0.5);
     c = mix(c, uFlash.rgb, uFlash.a * (0.35 + 0.65 * smoothstep(0.0, 0.5, r)));
@@ -149,7 +165,7 @@ export class World {
       ring: (x, z, r, color, dur) => this.rings.push({ x, z, r, color, t: 0, dur }),
       beam: (x1, z1, x2, z2, color, w, dur, y = 0.5) => this.beams.push({ x1, z1, x2, z2, color, w, t: 0, dur, y }),
       cone: (x, z, a, half, R, color) => { for (let k = 0; k < 26; k++) { const aa = a + (Math.random() * 2 - 1) * half, sp = R * (2.2 + Math.random() * 1.6); this.parts.push({ x, y: 0.4, z, vx: Math.cos(aa) * sp, vy: 0, vz: Math.sin(aa) * sp, life: 0.4, max: 0.4, color, size: 0.22, drag: 3 }); } },
-      num: (x, z, v, color, big) => { if (this.nums.length < (big ? 60 : 36)) this.nums.push({ x: x + (Math.random() - 0.5) * 0.5, z, v: Math.max(1, Math.round(v)), color, big, t: 0 }); },
+      num: (x, z, v, color, big) => { if (this.nums.length < (big ? 26 : 14) * (0.5 + 0.5 * (this.gain || 1))) this.nums.push({ x: x + (Math.random() - 0.5) * 0.5, z, v: Math.max(1, Math.round(v)), color, big, t: 0 }); },
       shake: a => { if (this.opts.shake) this.shakeA = Math.min(1.2, Math.max(this.shakeA, a)); },
       flash: (c, a) => { this.flashC.set(c); this.flashA = Math.max(this.flashA, a); },
       hitstop: t => { this.hitstopT = t; },
@@ -174,7 +190,8 @@ export class World {
     this.dist = Math.max(4.7 / (t * this.cam.aspect), 6.4 / t);
   }
   burst(x, z, color, n, o) {
-    if (this.parts.length > 700) return;
+    if (this.parts.length > 420) return;
+    if ((this.gain || 1) < 0.75) n = Math.ceil(n * (this.gain || 1) * 0.8);
     if (this.parts.length > 500) n = Math.ceil(n / 3); else if (this.parts.length > 250) n = Math.ceil(n / 2);
     const sp = o.spd || 3;
     for (let k = 0; k < n; k++) { const a = Math.random() * TAU, v = sp * (0.3 + Math.random() * 0.7); this.parts.push({ x, y: 0.4, z, vx: Math.cos(a) * v, vy: (o.up || 0) + Math.random() * 3, vz: Math.sin(a) * v, life: 0.3 + Math.random() * 0.3, max: 0.6, color, size: 0.1 + Math.random() * 0.12, drag: 2.5, grav: 7 }); }
@@ -199,6 +216,11 @@ export class World {
     // adaptive quality: if frames stay slow, drop the bloom pass
     if (dt > 0) { this.slow = (this.slow || 0) * 0.98 + (dt > 0.03 ? 0.02 : 0); if (this.slow > 0.7 && this.t > 6) this.autoLow = true; }
     this.bloom.strength = 0.55 + beat * 0.12 + (drop ? 0.2 : 0);
+    // auto-exposure for effects: the more light the wheel throws, the dimmer each effect gets
+    const want = Math.max(0.42, Math.min(1, 120 / Math.max(1, this.add.load)));
+    this.gain = this.gain === undefined ? 1 : this.gain + (want - this.gain) * Math.min(1, dt * (want < this.gain ? 14 : 3));
+    this.add.uniforms.uGain.value = this.gain;
+    this.bloom.strength *= 0.45 + 0.55 * this.gain;
     this.main.begin(); this.add.begin();
     this.drawProps(cx, cz, beat);
   }
@@ -230,17 +252,18 @@ export class World {
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i]; r.t += dt; if (r.t >= r.dur) { this.rings.splice(i, 1); continue; }
       const q = r.t / r.dur, rad = r.r * (0.3 + 0.7 * Math.sqrt(q)) * 2;
-      A.add('ring', r.x, 0.12, r.z, rad, rad, r.color, 1.6 * (1 - q), 0, 1);
+      A.add('ringthin', r.x, 0.12, r.z, rad, rad, r.color, 1.5 * (1 - q), 0, 1);
     }
     for (let i = this.beams.length - 1; i >= 0; i--) {
       const b = this.beams[i]; b.t += dt; if (b.t >= b.dur) { this.beams.splice(i, 1); continue; }
       const dx = b.x2 - b.x1, dz = b.z2 - b.z1, len = Math.hypot(dx, dz), a = Math.atan2(dz, dx), q = 1 - b.t / b.dur;
-      A.add('px', (b.x1 + b.x2) / 2, b.y, (b.z1 + b.z2) / 2, len, b.w * 2 * q, b.color, 1.5, a, 1);
-      A.add('px', (b.x1 + b.x2) / 2, b.y + 0.01, (b.z1 + b.z2) / 2, len, b.w * 0.7 * q, 0xffffff, 1.2, a, 1);
+      const bw = Math.min(1.1, b.w * 2) * q;
+      A.add('px', (b.x1 + b.x2) / 2, b.y, (b.z1 + b.z2) / 2, len, bw, b.color, 1.2, a, 1);
+      A.add('px', (b.x1 + b.x2) / 2, b.y + 0.01, (b.z1 + b.z2) / 2, len, Math.min(0.14, bw * 0.3), 0xffffff, 0.9, a, 1);
     }
     for (let i = this.nums.length - 1; i >= 0; i--) {
-      const n = this.nums[i]; n.t += dt; if (n.t > 0.6) { this.nums.splice(i, 1); continue; }
-      const s = String(n.v), sc = (n.big ? 0.6 : 0.36) * (n.t < 0.08 ? 1.5 : n.t > 0.45 ? (0.6 - n.t) / 0.15 : 1), w = sc * 0.72;
+      const n = this.nums[i]; n.t += dt; if (n.t > 0.5) { this.nums.splice(i, 1); continue; }
+      const s = String(n.v), sc = (n.big ? 0.6 : 0.36) * (n.t < 0.08 ? 1.5 : n.t > 0.38 ? (0.5 - n.t) / 0.12 : 1), w = sc * 0.72;
       const y = 1.3 + n.t * 2.2;
       for (let k = 0; k < s.length; k++) M.add('d' + s[k], n.x + (k - (s.length - 1) / 2) * w * 0.82, y, n.z + 0.3, w, sc, n.color);
     }
@@ -257,17 +280,19 @@ export class World {
     if (p.hp > 0 && p.hp < run.s.maxHp * 0.3 && this.flashA < 0.16) { this.flashC.set(0xff1030); this.flashA = 0.1 + 0.08 * Math.sin(t * 7); }
     this.frame(dt, p.x, p.z, run.beat, drop);
     const u = this.fu;
+    A.pri = true;
     if (st.arena) { u.uArena.value = 1; u.uArenaPos.value.set(st.arena.x, st.arena.r + 0.5, st.arena.z); for (let k = 0; k < 40; k++) { const a = k / 40 * TAU + t * 0.2; A.add('glow', st.arena.x + Math.cos(a) * (st.arena.r + 0.5), 0.1 + 0.4 * Math.abs(Math.sin(t * 5 + k)), st.arena.z + Math.sin(a) * (st.arena.r + 0.5), 0.9, 1.3, 0xff3050, 0.6); } } else u.uArena.value = 0;
 
     // zones under everything
     for (const z of run.zones) {
-      const q = z.t / z.dur;
-      if (z.type === 'nova') { A.add('ring', z.x, 0.15, z.z, z.r * 2, z.r * 2, z.color, 1.8 * (1 - q * 0.6), 0, 1); A.add('disc', z.x, 0.1, z.z, z.r * 2, z.r * 2, z.color, 0.12, 0, 1); }
-      else if (z.type === 'rift') { const s = z.r * 2 * Math.min(1, z.t * 4) * (q > 0.9 ? (1 - q) * 10 : 1); A.add('ring', z.x, 0.12, z.z, s, s, z.color, 1.2, t * 3, 1); A.add('ring', z.x, 0.14, z.z, s * 0.6, s * 0.6, z.color, 1.2, -t * 5, 1); A.add('glow', z.x, 0.16, z.z, s * 0.5, s * 0.5, 0xffffff, 0.8, 0, 1); if (Math.random() < 0.5) { const a = Math.random() * TAU; this.parts.push({ x: z.x + Math.cos(a) * z.r, y: 0.3, z: z.z + Math.sin(a) * z.r, vx: -Math.cos(a) * 5, vy: 0, vz: -Math.sin(a) * 5, life: 0.4, max: 0.4, color: z.color, size: 0.2 }); } }
-      else if (z.type === 'cloud') { const al = Math.min(1, z.t * 4) * Math.min(1, (z.dur - z.t) * 2); for (let k = 0; k < 6; k++) { const a = k / 6 * TAU + t * 0.6, rr = z.r * 0.5; A.add('glow', z.x + Math.cos(a) * rr, 0.2 + 0.1 * Math.sin(t * 3 + k), z.z + Math.sin(a) * rr, z.r * 1.3, z.r * 1.3, z.color, 0.3 * al, 0, 1); } A.add('ringthin', z.x, 0.1, z.z, z.r * 2, z.r * 2, z.color, 0.6 * al, 0, 1); }
+      const q = z.t / z.dur; A.pri = z.type === 'hazard';
+      if (z.type === 'nova') { A.add('ring', z.x, 0.15, z.z, z.r * 2, z.r * 2, z.color, 1.8 * (1 - q * 0.6), 0, 1); A.add('disc', z.x, 0.1, z.z, z.r * 2, z.r * 2, z.color, 0.05, 0, 1); }
+      else if (z.type === 'rift') { const s = z.r * 2 * Math.min(1, z.t * 4) * (q > 0.9 ? (1 - q) * 10 : 1); A.add('ring', z.x, 0.12, z.z, s, s, z.color, 1.2, t * 3, 1); A.add('ring', z.x, 0.14, z.z, s * 0.6, s * 0.6, z.color, 1.2, -t * 5, 1); A.add('glow', z.x, 0.16, z.z, s * 0.3, s * 0.3, 0xffffff, 0.5, 0, 1); if (Math.random() < 0.5) { const a = Math.random() * TAU; this.parts.push({ x: z.x + Math.cos(a) * z.r, y: 0.3, z: z.z + Math.sin(a) * z.r, vx: -Math.cos(a) * 5, vy: 0, vz: -Math.sin(a) * 5, life: 0.4, max: 0.4, color: z.color, size: 0.2 }); } }
+      else if (z.type === 'cloud') { const al = Math.min(1, z.t * 4) * Math.min(1, (z.dur - z.t) * 2); for (let k = 0; k < 3; k++) { const a = k / 3 * TAU + t * 0.6, rr = z.r * 0.5; A.add('glow', z.x + Math.cos(a) * rr, 0.2 + 0.1 * Math.sin(t * 3 + k), z.z + Math.sin(a) * rr, z.r * 0.9, z.r * 0.9, z.color, 0.22 * al, 0, 1); } A.add('ringthin', z.x, 0.1, z.z, z.r * 2, z.r * 2, z.color, 0.6 * al, 0, 1); }
       else if (z.type === 'meteor') { A.add('tele', z.x, 0.1, z.z, z.r * 2, z.r * 2, 0xff7a3d, 0.9, 0, 1); const y = (1 - q) * 14; A.add('glow', z.x + y * 0.3, y, z.z, 2.2, 2.2, 0xff9a4d, 1.6); A.add('orb', z.x + y * 0.3, y + 0.6, z.z, 0.9, 0.9, 0xffffff, 1.5); }
       else if (z.type === 'hazard') { A.add('tele', z.x, 0.1, z.z, z.r * 2, z.r * 2, 0xff3050, 1.2, 0, 1); A.add('disc', z.x, 0.11, z.z, z.r * 2 * q, z.r * 2 * q, 0xff3050, 0.35, 0, 1); }
     }
+    A.pri = true;
     // spotlight objective + compass pip
     const sp = run.spot;
     if (sp) {
@@ -289,6 +314,7 @@ export class World {
       else if (g.type === 'magnet') { M.spr('i_magnet', g.x, bob, g.z, 1, 0x73eff6); A.add('glow', g.x, 0, g.z, 1.4, 1.4, 0x73eff6, 0.5); }
       else if (g.type === 'chest') { M.spr('chest', g.x, 0, g.z, 1.3); A.add('glow', g.x, -0.3, g.z, 2.6, 2.6, 0xffcd75, 0.55 + 0.25 * Math.sin(t * 6)); A.add('ringthin', g.x, 0.1, g.z, 2.2, 2.2, 0xffcd75, 0.8, t, 1); }
     }
+    A.pri = false;
     // turrets
     for (const q of run.turrets) { M.add('shadow', q.x, 0.02, q.z, 0.8, 0.4, 0xffffff, 0, 0, 1); M.spr('totem', q.x, 0, q.z, 1.2); A.add('glow', q.x, 0.6, q.z, 1.2, 1.2, q.color, 0.7 + 0.3 * run.beat); }
     // enemies
@@ -305,7 +331,7 @@ export class World {
       if (e.elite || e.boss) A.add('glow', e.x, 0.1, e.z, 2.4 * sc, 2.4 * sc, e.boss ? e.color : 0xffd24d, 0.3 + 0.15 * run.beat, 0, 1);
       if (e.hexT > 0) M.spr('i_skull', e.x, fly + f.h / PPU * sc + 0.15, e.z, 0.6, 0xe04dff);
       if (e.burnT > 0 && Math.random() < 0.08) this.parts.push({ x: e.x, y: 0.6, z: e.z, vx: 0, vy: 2, vz: 0, life: 0.3, max: 0.3, color: 0xff7a3d, size: 0.2 });
-      if (e.line) { const L = e.line; A.add('px', e.x + Math.cos(L.a) * L.len / 2, 0.1, e.z + Math.sin(L.a) * L.len / 2, L.len, 1.6, 0xff3050, 0.25 + 0.3 * Math.abs(Math.sin(t * 20)), L.a, 1); }
+      if (e.line) { const L = e.line; A.pri = true; A.add('px', e.x + Math.cos(L.a) * L.len / 2, 0.1, e.z + Math.sin(L.a) * L.len / 2, L.len, 1.6, 0xff3050, 0.25 + 0.3 * Math.abs(Math.sin(t * 20)), L.a, 1); A.pri = false; }
     }
     // player
     {
@@ -322,13 +348,15 @@ export class World {
     // player shots
     for (const s of run.shots) {
       const r = s.r * 2;
-      if (s.long) { const a = Math.atan2(s.vz, s.vx); A.add('px', s.x, 0.5, s.z, 2.4, r * 0.7, s.color, 1.5, a, 1); A.add('px', s.x, 0.51, s.z, 2.0, r * 0.25, 0xffffff, 1.5, a, 1); }
+      if (s.long) { const a = Math.atan2(s.vz, s.vx); A.add('px', s.x, 0.5, s.z, 2.2, Math.min(0.3, r * 0.5), s.color, 1.2, a, 1); A.add('px', s.x, 0.51, s.z, 1.8, Math.min(0.1, r * 0.18), 0xffffff, 1, a, 1); }
       else if (s.type === 'chakram') { A.add('ring', s.x, 0.5, s.z, r * 2.2, r * 2.2, s.color, 1.6, t * 20, 1); A.add('glow', s.x, 0.2, s.z, r * 2, r * 2, s.color, 0.8); }
       else { A.add('glow', s.x, 0.5 - r * 1.3, s.z, r * 2.6, r * 2.6, s.color, 1.2); A.add('orb', s.x, 0.5 - r * 0.5, s.z, r, r, 0xffffff, 1.3); }
       if ((s.type === 'fireball' || s.type === 'wisp') && Math.random() < 0.5) this.parts.push({ x: s.x, y: 0.5, z: s.z, vx: 0, vy: 0.5, vz: 0, life: 0.25, max: 0.25, color: s.color, size: 0.22 });
     }
-    // enemy bullets: loud and readable
+    // enemy bullets: loud and readable, never dimmed
+    A.pri = true;
     for (const b of run.bullets) { A.add('glow', b.x, 0.05, b.z, 1.1, 1.1, 0xff2a6a, 1.2); A.add('orb', b.x, 0.33, b.z, 0.42, 0.42, 0xffe0f0, 1.6); A.add('disc', b.x, 0.05, b.z, 0.5, 0.5, 0xff2a6a, 0.5, 0, 1); }
+    A.pri = false;
     this.drawFx(dt);
     this.finish();
   }
