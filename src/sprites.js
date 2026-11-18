@@ -1,5 +1,5 @@
 // Procedural pixel art. Everything is drawn into one atlas canvas shared by three.js and Phaser.
-import { CHARS, RUNES, ELEM } from './data.js';
+import { CHARS, RUNES, ELEM, SKINS } from './data.js';
 
 const PAL = {
   k: '#1a1c2c', p: '#5d275d', r: '#b13e53', o: '#ef7d57', y: '#ffcd75', l: '#a7f070', g: '#38b764', t: '#257179',
@@ -9,6 +9,16 @@ const PAL = {
 const OUTLINE = '#0d0b1a';
 
 // Half sprites (mirrored left->right)
+// Hero looks. h = hat/hair colour, H = trim, R = robe: recoloured per character.
+const HERO = {
+  knight: ['....rr', '...aaa', '..aaaa', '..aaaa', '..akkk', '..aaaa', '...aaa', '.aRRRR', 'aaRRRy', 'a.RRRR', '..RRRR', '..aaaa', '...aa.', '...dd.'],
+  ninja: ['......', '...eee', '..eeee', 'H.HHHH', '.Heeee', '..ukuu', '..eeee', '.eeeee', 'ueeeeR', '.eeeeR', '.eeeee', '..eeee', '...ee.', '...dd.'],
+  witch: ['.....h', '....hh', '...hhh', '..hhHH', 'hhhhhh', '.ouuuu', '.oukuu', '.ouuuu', '.oRRRR', 'uRRRRy', '.RRRRR', 'RRRRRR', 'RRRRRR', '...kk.'],
+  cat: ['.h....', '.hh...', '.hhhhh', '.hhhhh', '.hkhhh', '.hhhhw', '..hhhh', '..RRRR', '.hRRRy', '.hRRRR', '..RRRR', '..RRRR', '...hh.', '...hh.'],
+  robot: ['.....y', '.....a', '..aaaa', '..aaaa', '..acaa', '..aaaa', '..akkk', '....dd', '.aRRRR', 'aaRRRy', 'a.RRRR', '..aaaa', '...aa.', '..ddd.'],
+  dj: ['..hhhh', '.hhhhh', 'Hhhhhh', '..uuuu', 'kkukuu', 'kkuuuu', '..uuuu', '.RRRRR', 'uRRRRw', '.RRRRR', '.RRRRR', '..RRRR', '...dd.', '...ww.'],
+  ghost: ['......', '..wwww', '.wwwww', '.wwwww', '.wkkww', '.wkkww', '.wwwww', 'RRRRRR', 'wwwwww', 'wwwwww', 'wwwwww', 'wwwwww', 'ww.www', 'w...w.'],
+};
 const HALF = {
   hero: ['....hh', '...hhh', '..hhhh', '..hhhh', '.HHHHH', '..uuuu', '..ukuu', '..uuuu', '.RRRRR', 'uRRRRy', '.RRRRR', '.RRRRR', '..RRRR', '...dd.'],
   slime: ['...ggg', '..gggg', '.glggg', '.ggggg', 'ggwkgg', 'ggwkgg', 'gggggg', 'gggggg', '.ttttt'],
@@ -31,6 +41,14 @@ const HALF = {
   crystal: ['....c', '...cc', '...cw', '..ccw', '..csw', 'c.csw', 'ccssw', 'cscsw', 'cssss', 'cssss', '.bsss', '.bbbb'],
   brazier: ['...y.', '..yoy', '.yooy', '.ooro', 'ddddd', '.dddd', '..ddd', '...dd', '...dd', '..ddd'],
   speaker: ['eeeee', 'ekkkk', 'ekkdd', 'ekdda', 'ekkdd', 'ekkkk', 'ekkkk', 'ekkdd', 'ekdaa', 'ekdaa', 'ekkdd', 'eeeee'],
+  skitter: ['p..p..', '.p.prr', '..prrr', 'pprryr', '..prrr', '.p.prr', 'p..p..'],
+  blinker: ['...vvv', '..vvvv', '.vvvvv', '.vvcvv', '.vvvvv', 'vvvvvv', 'vvmvvv', 'vv.vvv', 'v..vv.', '...v..'],
+  warden: ['...aaaa', '..aaaaa', '..akkka', '..aaaaa', 'sss.aaa', 'sbsaddd', 'sbsaddy', 'sbsaddd', 'sss.ddd', '.s..ddd', '....dd.', '...ddd.'],
+  shaman: ['y...rr.', 'y..rrrr', 'y.llllr', 'y.lkwll', 'y.lllll', 'y..llkk', 'yggggg.', 'ygggggy', 'y.ggggg', 'y.ggggg', 'y..gggg', '....dd.'],
+  lobber: ['.lll...', 'lwkl...', 'lllllll', 'glggggg', 'ggggyyy', 'gggyyyy', '.gggggg', 'gg..gg.'],
+  lancer: ['..rrrr', '.rrrrr', '.rwkrr', '.rrrrr', '..rrrr', '...oo.', '..oooo', 'o.oooo', 'oo.ooo', '...oo.', '..oo..', '..dd..'],
+  necro: ['..pppp', '.ppppp', '.pwwww', '.pwkkw', '.pwwww', '..pwkw', '.ppppp', 'pppppm', 'pppppp', 'wppppp', '.ppppp', '..pppp'],
+  bloom: ['..m.mmm', '.mmmmmm', 'mmmyyyy', '.mmyyky', 'mmmyyyy', '.mmmmmm', '..m.mmm', '.....gg', 'g..gggg', 'gg.gggg', '.gggggg'],
   hound: ['p....p.', 'pp..pp.', 'ppppppp', 'pmppppp', 'ppppppp', '.pppppk', '..pppww', '.pp.pp.'],
   chest: ['.yyyy', 'yoooo', 'yoooo', 'yyyyw', 'yooow', 'yoooo', 'yyyyy'],
   totem: ['..y', '.yy', 'yyy', '.ee', '.ey', '.ee', '.ey', '.ee', 'eee'],
@@ -133,7 +151,7 @@ export function buildAtlas() {
   const mirror = rows => rows.map(r => r + r.split('').reverse().join(''));
 
   for (const k in HALF) if (k !== 'hero') grid(k, mirror(HALF[k]));
-  for (const c of CHARS) grid('hero_' + c.id, mirror(HALF.hero), { h: c.pal.h, H: c.pal.H, R: c.pal.r });
+  for (const c of CHARS) for (const k of SKINS) grid(`hero_${c.id}_${k.id}`, mirror(k.id === 'wizard' ? HALF.hero : HERO[k.id]), { h: c.pal.h, H: c.pal.H, R: c.pal.r });
   for (const k in FULL) grid(k, FULL[k], {}, !/^(i_|r_)/.test(k));
   DIGITS.forEach((bits, d) => grid('d' + d, [0, 1, 2, 3, 4].map(r => bits.slice(r * 3, r * 3 + 3).replace(/1/g, 'w').replace(/0/g, '.'))));
 

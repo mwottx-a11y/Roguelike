@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { G, C, makeRoot, txt, img, btn, panel, tap, clear, hexs } from './kit.js';
 import { ELEM_GENRE, GENRES } from '../music.js';
 import { save, persist, resetSave, metaLvl, checkFeats, metaTotals } from '../save.js';
-import { CHARS, META, metaCost, RUNES, RUNE_IDS, ELEM, FEATS, FUSIONS, VOLUME_MAX, volumeDesc, TIPS, BIOMES } from '../data.js';
+import { CHARS, META, metaCost, RUNES, RUNE_IDS, ELEM, FEATS, FUSIONS, SKINS, VOLUME_MAX, volumeDesc, TIPS, BIOMES } from '../data.js';
 
 export class MenuScene extends Phaser.Scene {
   constructor() { super('menu'); }
@@ -23,7 +23,7 @@ export class MenuScene extends Phaser.Scene {
   update(t, dms) {
     if (G.hidden) return;
     const c = CHARS[this.charIdx];
-    G.world.renderMenu(Math.min(0.05, dms / 1000), c.id, c.start);
+    G.world.renderMenu(Math.min(0.05, dms / 1000), c.id, c.start, this.view === 'looks' ? SKINS[this.sel].id : save.skin);
     // title music: a freshly composed tune in 4/4
     this.mt = Math.max(-0.1, this.mt - dms / 1000);
     if (this.mt <= 0) { this.mt += 0.42; G.audio.step({ beat: this.mb % 4, beats: 4, unit: 4, dur: 0.42 }); this.mb++; }
@@ -41,6 +41,7 @@ export class MenuScene extends Phaser.Scene {
     const r = makeRoot(this), m = this.m;
     const dim = this.add.graphics(); r.add(dim);
     if (this.view !== 'home') { dim.fillStyle(0x0b0714, 0.82); dim.fillRect(0, 0, m.UW, m.UH); }
+    if (!SKINS.some(k => k.id === save.skin)) save.skin = 'wizard';
     this[this.view]();
   }
 
@@ -79,10 +80,10 @@ export class MenuScene extends Phaser.Scene {
       btn(this, r, x, by - 116, 220, 52, 'UNLOCK  ' + ch.cost, () => { save.echoes -= ch.cost; save.chars.push(ch.id); save.char = ch.id; checkFeats(null); persist(); G.audio.sfx('chest'); this.build(); }, { size: 20, fill: 0x3a2a10, border: 0xffcd75, color: C.gold, sfx: 'buy' }).setDisabled(save.echoes < ch.cost);
     }
     txt(this, r, x, by - 76, this.tip, 9, C.dim, 0.5, 0.5, { wrap: 320 });
-    const T = metaTotals(), nav = [['UPGRADES', 'upgrades', `${T.have}/${T.all}`], ['RUNES', 'runes', `${T.runes}/${T.runesAll}`], ['FEATS', 'feats', `${T.feats}/${T.featsAll}`], ['OPTIONS', 'options', '']];
-    nav.forEach(([label, view, sub], i) => { const bx = x - 132 + i * 88, b = btn(this, r, bx, by - 34, 82, 40, label, () => this.go(view), { size: 12 }); if (sub) { b.label.y = -7; txt(this, b, 0, 9, sub, 9, C.dim); } });
+    const T = metaTotals(), nav = [['UPGRADES', 'upgrades', `${T.have}/${T.all}`], ['RUNES', 'runes', `${T.runes}/${T.runesAll}`], ['LOOKS', 'looks', `${save.skins.length}/${SKINS.length}`], ['FEATS', 'feats', `${T.feats}/${T.featsAll}`], ['OPTIONS', 'options', '']];
+    nav.forEach(([label, view, sub], i) => { const bx = x - 140 + i * 70, b = btn(this, r, bx, by - 34, 66, 40, label, () => this.go(view), { size: 10 }); if (sub) { b.label.y = -7; txt(this, b, 0, 9, sub, 9, C.dim); } });
     // affordable upgrade hint
-    if (META.some(u => metaLvl(u.id) < u.max && metaCost(u, metaLvl(u.id)) <= save.echoes)) { const dot = txt(this, r, x - 132 + 34, by - 52, '!', 14, C.gold, 0.5, 0.5, { bold: true }); this.tweens.add({ targets: dot, y: by - 56, duration: 300, yoyo: true, repeat: -1 }); }
+    if (META.some(u => metaLvl(u.id) < u.max && metaCost(u, metaLvl(u.id)) <= save.echoes)) { const dot = txt(this, r, x - 140 + 26, by - 52, '!', 14, C.gold, 0.5, 0.5, { bold: true }); this.tweens.add({ targets: dot, y: by - 56, duration: 300, yoyo: true, repeat: -1 }); }
   }
   pickChar() { this.charSong(); const c = CHARS[this.charIdx]; if (save.chars.includes(c.id)) { save.char = c.id; persist(); } this.build(); }
 
@@ -106,6 +107,17 @@ export class MenuScene extends Phaser.Scene {
     txt(this, r, x, py - 14, d.desc, 11, C.dim, 0.5, 0.5, { wrap: 290, ls: 2 });
     if (d.button) btn(this, r, x, py + 38, 190, 34, d.button.label, d.button.cb, { size: 14, fill: 0x3a2a10, border: 0xffcd75, color: C.gold, sfx: 'buy' }).setDisabled(!d.button.ok);
     else if (d.note) txt(this, r, x, py + 38, d.note, 12, d.noteColor || C.green, 0.5, 0.5, { bold: true });
+  }
+  looks() {
+    const ch = CHARS[this.charIdx];
+    const items = SKINS.map(k => { const own = save.skins.includes(k.id); return { icon: `hero_${ch.id}_${k.id}`, scale: 3, dim: !own, lock: !own, sub: save.skin === k.id ? 'WORN' : own ? '' : String(k.cost), subColor: save.skin === k.id ? C.green : C.gold }; });
+    this.grid('LOOKS', items, (it, i) => {
+      const k = SKINS[i], own = save.skins.includes(k.id), d = { name: k.name, desc: `${k.desc}\nCosmetic only. Shown in ${ch.name}'s colours.` };
+      if (save.skin === k.id) d.note = 'WEARING THIS';
+      else if (own) d.button = { label: 'WEAR', ok: true, cb: () => { save.skin = k.id; persist(); this.build(); } };
+      else d.button = { label: `UNLOCK   ${k.cost}`, ok: save.echoes >= k.cost, cb: () => { save.echoes -= k.cost; save.skins.push(k.id); save.skin = k.id; persist(); this.build(); } };
+      return d;
+    });
   }
   upgrades() {
     const items = META.map(u => { const l = metaLvl(u.id); return { icon: u.icon, tint: l >= u.max ? 0xffcd75 : l > 0 ? 0xffffff : 0x8a84a8, sub: l >= u.max ? 'MAX' : `${l}/${u.max}`, subColor: l >= u.max ? C.gold : C.dim }; });

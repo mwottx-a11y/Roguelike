@@ -11,7 +11,7 @@ export class RunScene extends Phaser.Scene {
   constructor() { super('run'); }
   create() {
     G.world.reset();
-    this.run = new Run({ char: save.char, volume: save.volume, metaLevels: save.meta, unlocked: save.runes, fx: G.world.fx, audio: G.audio });
+    this.run = new Run({ char: save.char, volume: save.volume, metaLevels: save.meta, unlocked: save.runes, fx: G.world.fx, audio: G.audio, skin: save.skin });
     this.ov = null; this.ovKind = null; this.paused = false; this.joy = null; this.deadT = 0; this.banked = null; this.swapSel = -1; this.toastQ = []; this.toastT = 0; this._quit = false; this._sfxed = false; this.root = null; this.ovRoot = null;
     this.keys = this.input.keyboard ? this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,SHIFT,E,ESC,P') : null;
     this.jg = this.add.graphics().setDepth(5);

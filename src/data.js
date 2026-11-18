@@ -197,21 +197,47 @@ export const ENEMIES = {
   golem: { spr: 'golem', hp: 130, spd: 1.25, dmg: 20, r: 0.62, xp: 6, ai: 'chase', scale: 1.45 },
   eye: { spr: 'eye', hp: 30, spd: 2.3, dmg: 10, r: 0.42, xp: 3, ai: 'shoot', fly: 0.6 },
   bigslime: { spr: 'slime', hp: 60, spd: 1.5, dmg: 14, r: 0.62, xp: 3, ai: 'chase', scale: 1.6, split: 'slime' },
+  skitter: { spr: 'skitter', hp: 5, spd: 3.2, dmg: 5, r: 0.3, xp: 1, ai: 'weave', name: 'Skitter' },                 // fast, fragile, comes in packs
+  blinker: { spr: 'blinker', hp: 18, spd: 1.5, dmg: 13, r: 0.4, xp: 3, ai: 'blink', fly: 0.2, name: 'Blink Wraith' }, // teleports next to you
+  warden: { spr: 'warden', hp: 62, spd: 1.5, dmg: 14, r: 0.5, xp: 5, ai: 'chase', aura: 3.6, scale: 1.2, name: 'Warden' }, // foes near it take half damage
+  shaman: { spr: 'shaman', hp: 28, spd: 1.7, dmg: 8, r: 0.42, xp: 4, ai: 'heal', name: 'Shaman' },                    // heals the crowd
+  lobber: { spr: 'lobber', hp: 34, spd: 1.3, dmg: 15, r: 0.48, xp: 3, ai: 'lob', name: 'Lobber' },                    // mortars where you stand
+  lancer: { spr: 'lancer', hp: 24, spd: 1.8, dmg: 14, r: 0.4, xp: 3, ai: 'snipe', name: 'Lancer' },                   // aims a line, then fires fast
+  necro: { spr: 'necro', hp: 40, spd: 1.4, dmg: 10, r: 0.42, xp: 5, ai: 'necro', name: 'Necromancer' },               // keeps raising skitters
+  bloom: { spr: 'bloom', hp: 46, spd: 0, dmg: 10, r: 0.5, xp: 4, ai: 'turret', name: 'Bloom Cannon' },                // rooted, fires rings
 };
 
 export const BIOMES = [
   { id: 'crypt', name: 'NEON CRYPT', a: 0x241a3d, b: 0x32265a, acc: 0xb44dff, fog: 0x0b0714, tint: 0xffffff, props: ['tomb', 'candle'], root: 0, boss: 'slammer', bossName: 'KING GLOOP', bossSpr: 'b_slime',
-    roster: [['slime', 0], ['bat', 0.15], ['skel', 0.4], ['bigslime', 0.65]] },
+    roster: [['slime', 0], ['bat', 0.15], ['skitter', 0.3], ['skel', 0.4], ['bigslime', 0.65], ['necro', 0.8]] },
   { id: 'hollow', name: 'FUNGAL HOLLOW', a: 0x15301f, b: 0x1f4a2a, acc: 0x7dff6a, fog: 0x06120b, tint: 0xd0ffd0, props: ['bigshroom', 'fern'], root: 3, boss: 'caster', bossName: 'THE MYCOMANCER', bossSpr: 'b_lich',
-    roster: [['slime', 0], ['shroom', 0.1], ['bat', 0.25], ['boar', 0.45], ['bigslime', 0.6]] },
+    roster: [['slime', 0], ['shroom', 0.1], ['bat', 0.25], ['bloom', 0.3], ['boar', 0.45], ['shaman', 0.5], ['bigslime', 0.6]] },
   { id: 'vault', name: 'FROST VAULT', a: 0x1a2c4a, b: 0x25426b, acc: 0x73eff6, fog: 0x060d1a, tint: 0xd0e8ff, props: ['crystal', 'tomb'], root: 5, boss: 'charger', bossName: 'RIMEHORN', bossSpr: 'b_golem',
-    roster: [['skel', 0], ['ghost', 0.1], ['eye', 0.35], ['golem', 0.55], ['bat', 0.2]] },
+    roster: [['skel', 0], ['ghost', 0.1], ['bat', 0.2], ['blinker', 0.25], ['eye', 0.35], ['lancer', 0.45], ['golem', 0.55]] },
   { id: 'foundry', name: 'EMBER FOUNDRY', a: 0x3a1a16, b: 0x55261a, acc: 0xff7a3d, fog: 0x140606, tint: 0xffd8c0, props: ['brazier', 'crystal'], root: 7, boss: 'slamcaster', bossName: 'CINDER ENGINE', bossSpr: 'b_golem',
-    roster: [['bomb', 0], ['boar', 0.1], ['skel', 0], ['eye', 0.3], ['golem', 0.5]] },
+    roster: [['bomb', 0], ['boar', 0.1], ['skel', 0], ['lobber', 0.2], ['eye', 0.3], ['warden', 0.4], ['golem', 0.5]] },
   { id: 'stage', name: 'THE LAST STAGE', a: 0x2a0f33, b: 0x180820, acc: 0xff5ccd, fog: 0x05020a, tint: 0xffd0f4, props: ['speaker', 'candle'], root: 10, boss: 'conductor', bossName: 'THE CONDUCTOR', bossSpr: 'b_conductor',
-    roster: [['ghost', 0], ['bomb', 0.1], ['eye', 0.2], ['golem', 0.4], ['boar', 0.3], ['bat', 0]] },
+    roster: [['ghost', 0], ['bat', 0], ['bomb', 0.1], ['eye', 0.2], ['blinker', 0.25], ['boar', 0.3], ['warden', 0.35], ['golem', 0.4], ['necro', 0.5]] },
 ];
 
+// Each stage also invites two random guests from this list, so the same biome plays differently run to run.
+export const GUESTS = ['skitter', 'blinker', 'warden', 'shaman', 'lobber', 'lancer', 'necro', 'bloom', 'bat', 'shroom', 'boar', 'ghost', 'eye'];
+// Elites roll one of these.
+export const AFFIXES = {
+  swift: { name: 'SWIFT', color: 0x73eff6 }, armored: { name: 'ARMORED', color: 0xa8b8c8 }, volatile: { name: 'VOLATILE', color: 0xff7a3d },
+  splitting: { name: 'SPLITTING', color: 0x7dff6a }, regen: { name: 'REGENERATING', color: 0xff8ad8 }, frenzied: { name: 'FRENZIED', color: 0xff3050 },
+};
+// Hero looks: purely cosmetic. Each is redrawn in every character's colours.
+export const SKINS = [
+  { id: 'wizard', name: 'Apprentice', cost: 0, desc: 'The classic pointy hat.' },
+  { id: 'knight', name: 'Knight', cost: 150, desc: 'Plate, plume, and a visor to hide behind.' },
+  { id: 'ninja', name: 'Shinobi', cost: 200, desc: 'Headband tails optional. Stealth not included.' },
+  { id: 'witch', name: 'Hedge Witch', cost: 200, desc: 'Wide brim, long hair, long robe.' },
+  { id: 'cat', name: 'Familiar', cost: 250, desc: 'The cat was the wizard all along.' },
+  { id: 'robot', name: 'Automaton', cost: 300, desc: 'Runs on spite and a small antenna.' },
+  { id: 'dj', name: 'Selector', cost: 300, desc: 'Cap, cans, clean sneakers.' },
+  { id: 'ghost', name: 'Bedsheet', cost: 400, desc: 'Boo. Technically still alive.' },
+];
 export const MUTATORS = [
   { id: 'calm', name: 'Steady Groove', desc: 'No twist.', bonus: '', f: () => {} },
   { id: 'swarm', name: 'Mosh Pit', desc: '+60% enemies', bonus: '+60% gold', f: st => { st.spawnMul *= 1.6; st.goldMul *= 1.6; } },

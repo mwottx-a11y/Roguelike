@@ -47,6 +47,16 @@ Relics such as Rest Beat (stand still), Tour Bus (keep moving), Rubato (dash fir
 Minimalist (empty slots are power) and Bass Cannon (DROP casts everything) push whole builds.
 Pacts are free at the shop and always cost something.
 
+**Enemies.** 18 kinds. Beyond chasers, shooters, chargers and bombers there are Skitter packs, Blink
+Wraiths that teleport beside you, Wardens whose aura halves damage to everything near them, Shamans that
+heal the crowd, Lobbers that mortar your position, Lancers that paint a line before a fast shot,
+Necromancers that keep raising skitters, and rooted Bloom Cannons. Each stage after the first also invites
+two random guest kinds, a few foes spawn as brutes or runts, and every elite rolls an affix (Swift,
+Armored, Volatile, Splitting, Regenerating, Frenzied).
+
+**Looks.** Eight hero sprites (Apprentice, Knight, Shinobi, Hedge Witch, Familiar, Automaton, Selector,
+Bedsheet), bought with Echoes in the Looks menu. Cosmetic only; each is redrawn in every character's colours.
+
 **Fusions.** Two MAX-level spells sitting side by side can merge into one of 14 fusion runes
 (Fireball + Meteor = Supernova, Chain Spark + Storm Totem = Tesla Field, ...). The fusion takes one
 slot and frees the other. The wheel shows a link marker between neighbours that form a recipe.

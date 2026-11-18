@@ -1,5 +1,5 @@
 // HEXBEAT — run simulation. Pure logic: no DOM, no rendering. The renderer reads our arrays each frame.
-import { RUNES, PASSIVES, RELICS, RELIC_IDS, PACT_IDS, CHARS, META, ENEMIES, BIOMES, MUTATORS, ELEM, MAX_RUNE_LVL, fusionOf } from './data.js';
+import { GUESTS, AFFIXES, RUNES, PASSIVES, RELICS, RELIC_IDS, PACT_IDS, CHARS, META, ENEMIES, BIOMES, MUTATORS, ELEM, MAX_RUNE_LVL, fusionOf } from './data.js';
 
 const TAU = Math.PI * 2;
 const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
@@ -25,7 +25,8 @@ export const TUNE = {
 };
 
 export class Run {
-  constructor({ char, volume = 0, metaLevels = {}, unlocked, fx, audio }) {
+  constructor({ char, volume = 0, metaLevels = {}, unlocked, fx, audio, skin }) {
+    this.skin = skin || 'wizard'; this.wardens = [];
     this.char = CHARS.find(c => c.id === char) || CHARS[0];
     this.volume = volume;
     this.metaLevels = metaLevels;
@@ -132,6 +133,9 @@ export class Run {
     const biome = BIOMES[n % BIOMES.length];
     const st = { n, biome, t: 0, dur: 60 + 5 * Math.min(n, 4), spawnAcc: 0, spawnMul: 1, goldMul: 1, xpMul: 1, spdMul: 1, hpMul: 1, dmgMul: 1, shootMul: 1, elites: 1, elitesDone: 0, boss: null, bossDone: false, clearT: 0, hit: false, eventT: 14, spotT: 10, mut: MUTATORS.find(m => m.id === mutId) || MUTATORS[0] };
     st.mut.f(st);
+    { const have = new Set(biome.roster.map(r => r[0])), pool = GUESTS.filter(k => !have.has(k)), guests = [];
+      for (let k = 0; k < Math.min(2, n) && pool.length; k++) guests.push([pool.splice((Math.random() * pool.length) | 0, 1)[0], rnd(0.3, 0.7)]);
+      st.roster = [...biome.roster, ...guests]; st.guests = guests.map(g => g[0]); }
     this.stage = st;
     const v = this.volume;
     const late = n >= 3 ? 1.6 * Math.pow(1.3, n - 3) : 1; // the wheel hits double time around stage 4; foes toughen to match
@@ -535,6 +539,8 @@ export class Run {
     if (s.goldDmg) d *= 1 + 0.04 * Math.floor(this.gold / 100);
     const crit = !o.dot && (o.crit || Math.random() < s.crit);
     if (crit) d *= s.critMul + (o.critBonus || 0);
+    if (e.armor) d *= e.armor;
+    if (this.wardens.length && !e.k.aura && !e.boss) for (const w of this.wardens) if (!w.dead && (w.x - e.x) ** 2 + (w.z - e.z) ** 2 < w.k.aura * w.k.aura) { d *= 0.5; break; }
     if (e.shockT > 0) d *= 1.25;
     if (e.hexT > 0) d *= e.hexMul;
     if (s.frostbite && e.chillT > 0) d *= 1.35;
@@ -569,9 +575,11 @@ export class Run {
     if (s.leech && Math.random() < s.leech) this.heal(2);
     if (e.hexT > 0) this.after(0.05, () => this.aoe(e.x, e.z, e.hexR, e.hexDmg, 'void', { noReact: true }));
     if (s.liveWire && e.shockT > 0) { const q = this.nearest(e.x, e.z, 4, new Set([e])); if (q) { this.fx.beam(e.x, e.z, q.x, q.z, 0xffe14d, 0.12, 0.12); this.after(0.03, () => this.hit(q, 14, 'volt', { noReact: true })); } }
-    if (e.k.split) for (let k = 0; k < 2; k++) this.spawn(e.k.split, e.x + rnd(-0.4, 0.4), e.z + rnd(-0.4, 0.4));
+    if (e.k.split) for (let k = 0; k < 2; k++) this.spawn(e.k.split, e.x + rnd(-0.4, 0.4), e.z + rnd(-0.4, 0.4), { plain: true });
+    if (e.affix === 'volatile') for (let k = 0; k < 14; k++) this.ebullet(e.x, e.z, k / 14 * TAU, 4.2, 10);
+    if (e.affix === 'splitting') for (let k = 0; k < 5; k++) this.spawn(this.stage.roster[0][0], e.x + rnd(-1, 1), e.z + rnd(-1, 1), { plain: true });
     if (e.boss) return this.bossDown(e);
-    this.pickups.push({ type: 'xp', x: e.x, z: e.z, v: e.k.xp * (e.elite ? 10 : 1), t: 0 });
+    this.pickups.push({ type: 'xp', x: e.x, z: e.z, v: e.k.xp * (e.elite ? 10 : e.xpMul || 1), t: 0 });
     if (Math.random() < 0.11) this.pickups.push({ type: 'gold', x: e.x + rnd(-0.3, 0.3), z: e.z + rnd(-0.3, 0.3), v: Math.ceil(rnd(1, 3) * (1 + Math.min(st.n, 6) * 0.12)), t: 0 });
     if (Math.random() < 0.006) this.pickups.push({ type: 'heart', x: e.x, z: e.z, v: 20, t: 0 });
     if (Math.random() < 0.0015) this.pickups.push({ type: 'magnet', x: e.x, z: e.z, v: 0, t: 0 });
@@ -763,25 +771,34 @@ export class Run {
     const k = ENEMIES[kind], st = this.stage;
     const tm = 1 + 0.6 * Math.min(1, st.t / st.dur);
     const e = { k, x, z, hp: k.hp * this.eHp * tm * (o.hp || 1), r: k.r * (o.size || 1), spd: Math.min(k.spd * this.eSpd, TUNE.spdCap) * rnd(0.92, 1.08), dmg: k.dmg * this.eDmg, t: rnd(10), flash: 0, kx: 0, kz: 0, burnT: 0, burn: 0, chillT: 0, shockT: 0, psn: 0, psnT: 0, hexT: 0, stun: 0, orbCd: 0, dotT: 0, cd: rnd(1, 3), mode: 0, mt: 0, y: 0, color: o.color || st.biome.tint, scale: (k.scale || 1) * (o.size || 1), elite: !!o.elite, spr: k.spr };
+    // a few ordinary foes come out as brutes or runts
+    if (!o.elite && !o.plain && k.spd > 0 && (st.n > 0 || st.t > 30)) { const v = Math.random(); if (v < 0.06) { e.hp *= 2.3; e.scale *= 1.3; e.r *= 1.25; e.spd *= 0.85; e.dmg *= 1.25; e.xpMul = 3; e.color = 0xff9a9a; } else if (v < 0.12) { e.hp *= 0.5; e.scale *= 0.75; e.r *= 0.8; e.spd = Math.min(TUNE.spdCap, e.spd * 1.3); } }
     e.maxHp = e.hp; this.enemies.push(e); return e;
   }
   spawnPos(r = 17) { const a = rnd(TAU), p = this.p; return [p.x + Math.cos(a) * r * 0.8 + p.dx * 2, p.z + Math.sin(a) * r * 1.15 + p.dz * 2]; }
   spawnRoster(prog) {
-    const ros = this.stage.biome.roster.filter(r => r[1] <= prog); const [kind] = pick(ros); const [x, z] = this.spawnPos(); this.spawn(kind, x, z);
+    const ros = this.stage.roster.filter(r => r[1] <= prog); const [kind] = pick(ros), k = ENEMIES[kind];
+    if (k.ai === 'turret') { if (this.enemies.filter(e => e.k === k).length >= 4) return; const a = rnd(TAU), d = rnd(9, 12); this.spawn(kind, this.p.x + Math.cos(a) * d, this.p.z + Math.sin(a) * d); this.fx.ring(this.p.x + Math.cos(a) * d, this.p.z + Math.sin(a) * d, 1.2, 0xff5ccd, 0.4); return; }
+    if ((k.aura || k.ai === 'heal' || k.ai === 'necro') && this.enemies.filter(e => e.k === k).length >= 3) return this.spawn(this.stage.roster[0][0], ...this.spawnPos());
+    const [x, z] = this.spawnPos(); this.spawn(kind, x, z);
+    if (kind === 'skitter') for (let j = 0; j < 2; j++) this.spawn(kind, x + rnd(-1, 1), z + rnd(-1, 1));
   }
   spawnElite(prog) {
-    const ros = this.stage.biome.roster.filter(r => r[1] <= prog && ENEMIES[r[0]].ai !== 'bomb'); const [kind] = pick(ros); const [x, z] = this.spawnPos(15);
-    this.spawn(kind, x, z, { hp: 9 + this.stage.n, size: 1.6, color: 0xffd24d, elite: true }); this.toast('ELITE!', 0xffd24d); this.audio.sfx('warn');
+    const ros = this.stage.roster.filter(r => r[1] <= prog && !['bomb', 'turret'].includes(ENEMIES[r[0]].ai) && r[0] !== 'skitter'); const [kind] = pick(ros.length ? ros : [['slime']]); const [x, z] = this.spawnPos(15);
+    const affix = pick(Object.keys(AFFIXES)), A = AFFIXES[affix];
+    const e = this.spawn(kind, x, z, { hp: 9 + this.stage.n, size: 1.6, color: A.color, elite: true });
+    e.affix = affix; if (affix === 'swift') e.spd = Math.min(TUNE.spdCap * 1.1, e.spd * 1.5); if (affix === 'armored') { e.armor = 0.5; e.spd *= 0.85; }
+    this.toast('ELITE: ' + A.name, A.color); this.audio.sfx('warn');
   }
   spawnEvent() {
-    const p = this.p, n = 10 + this.stage.n * 3, kind = this.stage.biome.roster[0][0];
+    const p = this.p, n = 10 + this.stage.n * 3, kind = this.stage.roster[0][0];
     if (Math.random() < 0.5) { for (let k = 0; k < n; k++) { const a = k / n * TAU; this.spawn('bat', p.x + Math.cos(a) * 15, p.z + Math.sin(a) * 15); } }
     else { const a = rnd(TAU), cx = Math.cos(a), cz = Math.sin(a); for (let k = 0; k < n; k++) this.spawn(kind, p.x + cx * 16 - cz * (k - n / 2) * 0.9, p.z + cz * 16 + cx * (k - n / 2) * 0.9); }
     this.audio.sfx('warn');
   }
   spawnBoss() {
     const st = this.stage, b = st.biome, n = st.n, p = this.p;
-    const e = this.spawn('golem', p.x, p.z - 9, { color: 0xffffff });
+    const e = this.spawn('golem', p.x, p.z - 9, { color: 0xffffff, plain: true });
     e.boss = true; e.bt = b.boss; e.spr = b.bossSpr; e.scale = 1; e.r = 1.25; e.name = b.bossName + (n >= 5 ? ' ' + 'I'.repeat(Math.min(3, Math.floor(n / 5))) + '+' : '');
     e.hp = e.maxHp = 620 * Math.pow(2.05, n) * this.late * (1 + 0.42 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
     e.seq = { slammer: ['walk', 'jump'], caster: ['spiral', 'fan', 'rest', 'summon'], charger: ['aim', 'dash', 'rest'], slamcaster: ['walk', 'jump', 'jump', 'spiral', 'fan'], conductor: ['spiral', 'fan', 'jump', 'jump', 'aim', 'dash', 'aim', 'dash', 'rain', 'summon'] }[e.bt];
@@ -816,7 +833,7 @@ export class Run {
         break;
       }
       case 'fan': if (e.mt > 0.4) { const a = Math.atan2(dz, dx); for (let k = -2; k <= 2; k++) this.ebullet(e.x, e.z, a + k * 0.2, 6.2, 11); this.audio.sfx('eshoot'); if (ph2) this.after(0.3, () => { if (!e.dead) for (let k = -3; k <= 3; k++) this.ebullet(e.x, e.z, a + k * 0.16 + 0.08, 5.2, 11); }); next(); } break;
-      case 'summon': if (e.mt > 0.5) { for (let k = 0; k < 4 + Math.min(4, n); k++) { const a = rnd(TAU); this.spawn(k % 2 ? 'bat' : this.stage.biome.roster[0][0], e.x + Math.cos(a) * 2, e.z + Math.sin(a) * 2); } this.fx.ring(e.x, e.z, 2.5, e.color, 0.4); next(); } break;
+      case 'summon': if (e.mt > 0.5) { for (let k = 0; k < 4 + Math.min(4, n); k++) { const a = rnd(TAU); this.spawn(k % 2 ? 'bat' : this.stage.roster[0][0], e.x + Math.cos(a) * 2, e.z + Math.sin(a) * 2); } this.fx.ring(e.x, e.z, 2.5, e.color, 0.4); next(); } break;
       case 'aim': {
         if (!e.sub) { e.sub = 1; e.ca = Math.atan2(dz, dx); e.line = { a: e.ca, len: 13 }; }
         if (e.mt < 0.45) { e.ca = Math.atan2(dz, dx); e.line.a = e.ca; }
@@ -841,8 +858,11 @@ export class Run {
   }
   updateEnemies(dt) {
     const p = this.p, es = this.enemies, st = this.stage, s = this.s;
+    this.wardens = es.filter(e => e.k.aura && !e.dead);
     for (let i = 0; i < es.length; i++) {
       const e = es[i]; if (e.dead) continue;
+      if (e.affix === 'regen' && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.025 * dt);
+      if (e.affix === 'frenzied' && !e.fz && e.hp < e.maxHp * 0.5) { e.fz = 1; e.spd = Math.min(TUNE.spdCap * 1.15, e.spd * 1.6); e.dmg *= 1.3; this.fx.ring(e.x, e.z, 2, 0xff3050, 0.3); }
       e.t += dt; if (e.flash > 0) e.flash -= dt; if (e.orbCd > 0) e.orbCd -= dt;
       // status
       if (e.hexT > 0) e.hexT -= dt; if (e.shockT > 0) e.shockT -= dt; if (e.chillT > 0) e.chillT -= dt;
@@ -868,6 +888,37 @@ export class Run {
           if (d < 5) { mx = -mx * 0.6; mz = -mz * 0.6; } else if (d < 7) { const t = mx; mx = -mz * 0.7; mz = t * 0.7; }
           e.cd -= dt * st.shootMul;
           if (e.cd <= 0 && d < 10) { e.cd = 2.6; this.ebullet(e.x, e.z, Math.atan2(dz, dx), 5, 9); this.audio.sfx('eshoot'); e.flash = 0.1; }
+          break;
+        case 'blink': // teleports beside you after a short warning ring
+          e.cd -= dt;
+          if (e.cd <= 0.45 && !e.bt && d < 16) { const a = rnd(TAU), r = rnd(2.4, 3.4); e.bt = [p.x + Math.cos(a) * r, p.z + Math.sin(a) * r]; this.fx.ring(e.bt[0], e.bt[1], 0.9, 0xb48cff, 0.45); }
+          if (e.cd <= 0) { e.cd = 3.4; if (e.bt) { this.fx.burst(e.x, e.z, 0xb48cff, 5, {}); e.x = e.bt[0]; e.z = e.bt[1]; e.bt = null; this.fx.burst(e.x, e.z, 0xb48cff, 5, {}); e.flash = 0.15; continue; } }
+          break;
+        case 'heal': // hangs back and tops up everyone around it
+          if (d < 6) { mx = -mx * 0.7; mz = -mz * 0.7; } else if (d < 8) { const t = mx; mx = -mz * 0.6; mz = t * 0.6; }
+          e.cd -= dt;
+          if (e.cd <= 0) { e.cd = 3.2; let n = 0; for (const q of es) if (!q.dead && q !== e && !q.boss && q.hp < q.maxHp && (q.x - e.x) ** 2 + (q.z - e.z) ** 2 < 20) { q.hp = Math.min(q.maxHp, q.hp + q.maxHp * 0.3); q.flash = 0.1; n++; } if (n) { this.fx.ring(e.x, e.z, 4.4, 0x7dff6a, 0.4); e.flash = 0.15; } }
+          break;
+        case 'lob': // mortar onto where you are standing
+          if (d < 6) { mx = -mx * 0.5; mz = -mz * 0.5; } else if (d < 8.5) sp = 0;
+          e.cd -= dt * st.shootMul;
+          if (e.cd <= 0 && d < 11) { e.cd = 3.6; this.zones.push({ type: 'hazard', enemy: true, x: p.x + p.dx * (p.moving ? 0.8 : 0), z: p.z + p.dz * (p.moving ? 0.8 : 0), r: 1.7, t: 0, dur: 1.15, dmg: e.dmg }); e.flash = 0.15; this.audio.sfx('eshoot'); }
+          break;
+        case 'snipe': // stops, paints a line, fires a fast shot down it
+          if (e.sub) { sp = 0; e.sub -= dt; if (e.sub > 0.3) e.line.a = Math.atan2(dz, dx); if (e.sub <= 0) { e.sub = 0; this.ebullet(e.x, e.z, e.line.a, 14, 14); e.line = null; this.audio.sfx('eshoot'); e.flash = 0.15; } break; }
+          if (d < 6) { mx = -mx * 0.6; mz = -mz * 0.6; } else if (d < 9) sp *= 0.3;
+          e.cd -= dt * st.shootMul;
+          if (e.cd <= 0 && d < 11) { e.cd = 3.8; e.sub = 0.95; e.line = { a: Math.atan2(dz, dx), len: 11, w: 0.3 }; }
+          break;
+        case 'necro': // keeps its distance and keeps raising skitters
+          if (d < 7) { mx = -mx * 0.7; mz = -mz * 0.7; } else if (d < 9) { const t = mx; mx = -mz * 0.6; mz = t * 0.6; }
+          e.cd -= dt;
+          if (e.cd <= 0) { e.cd = 5; if (es.length < 150) { for (let j = 0; j < 3; j++) this.spawn('skitter', e.x + rnd(-1, 1), e.z + rnd(-1, 1), { plain: true }); this.fx.ring(e.x, e.z, 1.6, 0xe04dff, 0.35); e.flash = 0.15; } }
+          break;
+        case 'turret': // rooted; pulses rings of bullets
+          sp = 0; e.cd -= dt * st.shootMul;
+          if (e.cd <= 0.5 && e.cd > 0) e.flash = 0.05;
+          if (e.cd <= 0 && d < 15) { e.cd = 3.2; e.ang = (e.ang || 0) + 0.4; for (let j = 0; j < 7; j++) this.ebullet(e.x, e.z, e.ang + j / 7 * TAU, 3.6, 9); this.audio.sfx('eshoot'); }
           break;
         case 'charge':
           if (e.mode === 0) { e.cd -= dt; if (e.cd <= 0 && d < 6.5) { e.mode = 1; e.mt = 0.55; } }

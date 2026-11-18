@@ -318,7 +318,7 @@ export class World {
     // mines, decoy, hounds
     for (const m of run.mines) { const armed = m.t > 0.35, bl = armed ? 0.5 + 0.5 * Math.sin(t * 8 + m.x) : 0.2; M.spr('r_mine', m.x, 0.02, m.z, 0.75, armed ? 0xff7a3d : 0x8a5a40); A.add('glow', m.x, -0.2, m.z, 1, 1, 0xff7a3d, 0.5 * bl); }
     const dc = run.decoy;
-    if (dc) { const bl = dc.t < 0.8 && Math.floor(t * 16) % 2; M.add('shadow', dc.x, 0.02, dc.z + 0.05, 0.9, 0.42, 0xffffff, 0, 0, 1); M.spr('hero_' + run.char.id, dc.x, 0.05 + 0.08 * Math.sin(t * 6), dc.z, 1, bl ? 0xffffff : 0x9a7dff, bl ? 0.8 : 0.25); A.add('ringthin', dc.x, 0.1, dc.z, dc.r * 2, dc.r * 2, 0xb48cff, 0.5, t, 1); A.add('glow', dc.x, 0, dc.z, 2.2, 2.2, 0xb48cff, 0.6); }
+    if (dc) { const bl = dc.t < 0.8 && Math.floor(t * 16) % 2; M.add('shadow', dc.x, 0.02, dc.z + 0.05, 0.9, 0.42, 0xffffff, 0, 0, 1); M.spr('hero_' + run.char.id + '_' + run.skin, dc.x, 0.05 + 0.08 * Math.sin(t * 6), dc.z, 1, bl ? 0xffffff : 0x9a7dff, bl ? 0.8 : 0.25); A.add('ringthin', dc.x, 0.1, dc.z, dc.r * 2, dc.r * 2, 0xb48cff, 0.5, t, 1); A.add('glow', dc.x, 0, dc.z, 2.2, 2.2, 0xb48cff, 0.6); }
     for (const h of run.pets) { const sc = (h.big ? 1.15 : 0.9) * Math.min(1, h.t * 3); M.add('shadow', h.x, 0.02, h.z + 0.05, 0.8 * sc, 0.36 * sc, 0xffffff, 0, 0, 1); M.spr('hound', h.x, Math.abs(Math.sin(h.a * 12)) * 0.12, h.z, sc, 0xffffff, 0, h.fx || 1); A.add('glow', h.x, 0, h.z, 1.5, 1.5, 0xe04dff, 0.55); }
     // turrets
     for (const q of run.turrets) { M.add('shadow', q.x, 0.02, q.z, 0.8, 0.4, 0xffffff, 0, 0, 1); M.spr('totem', q.x, 0, q.z, 1.2); A.add('glow', q.x, 0.6, q.z, 1.2, 1.2, q.color, 0.7 + 0.3 * run.beat); }
@@ -334,13 +334,14 @@ export class World {
       M.add('shadow', e.x, 0.02, e.z + 0.05, sw, sw * 0.45, 0xffffff, 0, 0, 1);
       M.spr(e.spr, e.x, fly, e.z, sc, col, e.flash > 0 ? 0.55 : 0, flip, wob);
       if (e.elite || e.boss) A.add('glow', e.x, 0.1, e.z, 2.4 * sc, 2.4 * sc, e.boss ? e.color : 0xffd24d, 0.3 + 0.15 * run.beat, 0, 1);
+      if (e.k.aura) { A.pri = true; A.add('ringthin', e.x, 0.1, e.z, e.k.aura * 2, e.k.aura * 2, 0x41a6f6, 0.9, t * 0.5, 1); A.pri = false; A.add('disc', e.x, 0.09, e.z, e.k.aura * 2, e.k.aura * 2, 0x41a6f6, 0.1, 0, 1); }
       if (e.hexT > 0) M.spr('i_skull', e.x, fly + f.h / PPU * sc + 0.15, e.z, 0.6, 0xe04dff);
       if (e.burnT > 0 && Math.random() < 0.08) this.parts.push({ x: e.x, y: 0.6, z: e.z, vx: 0, vy: 2, vz: 0, life: 0.3, max: 0.3, color: 0xff7a3d, size: 0.2 });
-      if (e.line) { const L = e.line; A.pri = true; A.add('px', e.x + Math.cos(L.a) * L.len / 2, 0.1, e.z + Math.sin(L.a) * L.len / 2, L.len, 1.6, 0xff3050, 0.25 + 0.3 * Math.abs(Math.sin(t * 20)), L.a, 1); A.pri = false; }
+      if (e.line) { const L = e.line; A.pri = true; A.add('px', e.x + Math.cos(L.a) * L.len / 2, 0.1, e.z + Math.sin(L.a) * L.len / 2, L.len, L.w || 1.6, 0xff3050, 0.25 + 0.3 * Math.abs(Math.sin(t * 20)), L.a, 1); A.pri = false; }
     }
     // player
     {
-      const hero = 'hero_' + run.char.id, blink = p.inv > 0 && p.hurt <= 0 && Math.floor(t * 20) % 2 === 0;
+      const hero = 'hero_' + run.char.id + '_' + run.skin, blink = p.inv > 0 && p.hurt <= 0 && Math.floor(t * 20) % 2 === 0;
       M.add('shadow', p.x, 0.02, p.z + 0.05, 0.9, 0.42, 0xffffff, 0, 0, 1);
       if (!blink && run.state !== 'dead') M.spr(hero, p.x, p.moving ? Math.abs(Math.sin(t * 14)) * 0.12 : 0, p.z, 1, 0xffffff, p.hurt > 0 ? 0.9 : 0, p.fx, 1 + 0.04 * Math.sin(t * (p.moving ? 14 : 3)));
       A.add('glow', p.x, 0.1, p.z, 3.2, 3.2, drop ? 0xff5ccd : this.b.acc, 0.16 + 0.14 * run.beat + (drop ? 0.25 : 0), 0, 1);
@@ -374,7 +375,7 @@ export class World {
   }
 
   // ---------- menu backdrop ----------
-  renderMenu(dt, charId, runes) {
+  renderMenu(dt, charId, runes, skin = 'wizard') {
     const t = this.t, beat = Math.pow(1 - (t * 1.6) % 1, 3);
     if ((t * 1.6) % 4 < dt * 1.6) this.ringT = 0;
     const cx = Math.sin(t * 0.1) * 6, cz = t * 0.7;
@@ -382,7 +383,7 @@ export class World {
     this.fu.uArena.value = 0;
     const M = this.main, A = this.add;
     M.add('shadow', cx, 0.02, cz + 0.05, 1.8, 0.8, 0xffffff, 0, 0, 1);
-    M.spr('hero_' + charId, cx, Math.abs(Math.sin(t * 8)) * 0.15, cz, 2, 0xffffff, 0, 1, 1 + 0.04 * Math.sin(t * 8));
+    M.spr('hero_' + charId + '_' + skin, cx, Math.abs(Math.sin(t * 8)) * 0.15, cz, 2, 0xffffff, 0, 1, 1 + 0.04 * Math.sin(t * 8));
     A.add('glow', cx, 0.1, cz, 6, 6, this.b.acc, 0.3 + 0.2 * beat, 0, 1);
     const n = runes.length;
     for (let k = 0; k < n; k++) { const a = t * 0.8 + k / n * TAU, x = cx + Math.cos(a) * 2.7, z = cz + Math.sin(a) * 1.6; M.spr('rune_' + runes[k], x, 0.9 + 0.2 * Math.sin(t * 2 + k), z, 0.8); A.add('glow', x, 0.6, z, 1.6, 1.6, ELEM[RUNES[runes[k]].elem].c, 0.5); }
