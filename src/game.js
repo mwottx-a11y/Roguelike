@@ -11,6 +11,18 @@ export const xpNeed = l => Math.floor(4 + 3 * l + 0.5 * l * l);
 // One wheel slot = one beat. Up to 5 slots a beat is a quarter note; from 6 slots it is an eighth note (double time).
 export const STEP_Q = 0.42;
 export const MAX_SLOTS = 6;
+// ---- difficulty dials (tuned with tools/pro.mjs) ----
+export const TUNE = {
+  enemyHp: 1.05,      // all enemy health
+  enemyHpStage: 2.0,  // health growth per stage
+  enemyDmg: 1.6,      // all enemy damage
+  enemyDmgStage: 1.5, // damage growth per stage
+  enemySpd: 1.18,     // enemy move speed
+  spdCap: 4.3,        // nothing ordinary outruns a base-speed player
+  iframes: 0.45,      // seconds of safety after a hit
+  armorK: 10,         // damage taken = dmg * K / (K + armor)
+  bossHeal: 0.1,      // fraction of max HP restored by a boss kill
+};
 
 export class Run {
   constructor({ char, volume = 0, metaLevels = {}, unlocked, fx, audio }) {
@@ -58,7 +70,7 @@ export class Run {
     const P = this.passives;
     s.dmg *= 1 + 0.12 * (P.might || 0); s.tempo *= 1 + 0.06 * (P.tempo || 0); s.maxHp += 20 * (P.vital || 0); s.speed *= 1 + 0.07 * (P.swift || 0);
     s.magnet *= 1 + 0.35 * (P.magnet || 0); s.area *= 1 + 0.1 * (P.area || 0); s.crit += 0.07 * (P.crit || 0); s.slots += P.slot || 0; s.multi += P.multi || 0;
-    s.regen += 0.5 * (P.regen || 0); s.armor += 2 * (P.armor || 0); s.xpMul *= 1 + 0.1 * (P.growth || 0);
+    s.regen += 0.25 * (P.regen || 0); s.armor += 2 * (P.armor || 0); s.xpMul *= 1 + 0.1 * (P.growth || 0);
     s.dur *= 1 + 0.15 * (P.sustain || 0); s.dashCd *= Math.pow(0.88, P.agility || 0); s.twinChance += 0.06 * (P.dstop || 0); s.execute += 0.12 * (P.finisher || 0); s.dropGain *= 1 + 0.2 * (P.hype || 0); s.luck += 0.3 * (P.fortune || 0);
     for (const id of this.relics) RELICS[id].f(s);
     s.maxHp = Math.max(20, Math.round(s.maxHp * s.maxHpMul));
@@ -124,9 +136,9 @@ export class Run {
     const v = this.volume;
     const late = n >= 3 ? 1.6 * Math.pow(1.3, n - 3) : 1; // the wheel hits double time around stage 4; foes toughen to match
     this.late = late;
-    this.eHp = Math.pow(1.72, n) * (n === 1 ? 0.85 : 1) * late * (1 + 0.22 * v + 0.017 * v * v) * st.hpMul;
-    this.eDmg = Math.pow(1.27, n) * (n >= 3 ? 1.15 : 1) * (1 + 0.11 * v) * st.dmgMul;
-    this.eSpd = (v >= 10 ? 1.16 : v >= 4 ? 1.08 : 1) * this.s.enemySpd * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
+    this.eHp = TUNE.enemyHp * Math.pow(TUNE.enemyHpStage, n) * late * (1 + 0.42 * v + 0.03 * v * v) * st.hpMul;
+    this.eDmg = TUNE.enemyDmg * Math.pow(TUNE.enemyDmgStage, n) * (1 + 0.2 * v) * st.dmgMul;
+    this.eSpd = TUNE.enemySpd * (1 + Math.min(0.2, 0.02 * v)) * this.s.enemySpd * st.spdMul * (1 + Math.min(0.2, 0.02 * Math.max(0, n - 4)));
     this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy); this.spot = null; this.mines.length = 0; this.pets.length = 0; this.decoy = null;
     this.state = 'play';
     this.fx.biome(biome);
@@ -462,7 +474,7 @@ export class Run {
       case 'siphon': {
         const ts = this.nearestN(2 + (lv >= 3) + (lv >= 5) + s.multi, 8); let healed = 0;
         for (const e of ts) { this.fx.beam(e.x, e.z, p.x, p.z, col, 0.12, 0.2); this.hit(e, 11 * L * c.dmg, 'void', o); healed += lv >= 5 ? 0.8 : 0.5; }
-        if (healed) this.heal(Math.min(2.5, healed));
+        if (healed) this.heal(Math.min(1.5, healed));
         break;
       }
       case 'roots': {
@@ -473,7 +485,7 @@ export class Run {
       }
       case 'aegis': {
         this.aegisMax = 1 + (lv >= 3) + (lv >= 5);
-        if (++this.aegisN >= (lv >= 4 ? 2 : 3)) { this.aegisN = 0; if (this.shield < this.aegisMax) { this.shield++; this.fx.ring(p.x, p.z, 1.6, 0xffffff, 0.3); } }
+        if (this.time - (this.aegisAt || -99) >= (lv >= 4 ? 7 : 10) && this.shield < this.aegisMax) { this.aegisAt = this.time; this.shield++; this.fx.ring(p.x, p.z, 1.6, 0xffffff, 0.3); }
         this.aoe(p.x, p.z, 2.5 * A, 10 * L * c.dmg, 'steel', { ...o, kb: 2 });
         break;
       }
@@ -489,7 +501,7 @@ export class Run {
       }
       case 'f_jugger': {
         this.jugger = { t: 3 * D, dmg: 42 * c.dmg, cd: 0, r: 1.9 * Math.sqrt(A), o }; this.moved = 0;
-        this.aegisMax = Math.max(this.aegisMax, 3); if (++this.aegisN >= 2) { this.aegisN = 0; if (this.shield < this.aegisMax) this.shield++; }
+        this.aegisMax = Math.max(this.aegisMax, 3); if (this.time - (this.aegisAt || -99) >= 6 && this.shield < this.aegisMax) { this.aegisAt = this.time; this.shield++; }
         break;
       }
       case 'f_parasite': {
@@ -577,7 +589,7 @@ export class Run {
     for (let k = 0; k < 10; k++) this.pickups.push({ type: 'xp', x: e.x + rnd(-2, 2), z: e.z + rnd(-2, 2), v: 4 + st.n * 2, t: 0 });
     this.pending.push('relic');
     if (this.s.cheque) { const g = Math.min(60, Math.floor(this.gold * 0.15)); if (g > 0) { this.gold += g; this.toast('+' + g + ' INTEREST', 0xffcd75); } }
-    this.heal(this.s.maxHp * 0.25);
+    this.heal(this.s.maxHp * TUNE.bossHeal);
     this.state = 'clear'; st.clearT = 2.4;
     this.toast('STAGE CLEAR', 0xffcd75);
   }
@@ -586,11 +598,12 @@ export class Run {
     const p = this.p, s = this.s;
     if (p.inv > 0 || this.state !== 'play') return;
     if (this.shield > 0) { // a shield eats the hit and bursts
-      this.shield--; this.c.blocks++; p.inv = 0.6; this.fx.ring(p.x, p.z, 3, 0xffffff, 0.3); this.fx.shake(0.25); this.audio.sfx('crit'); this.fx.haptic(15);
+      this.shield--; this.c.blocks++; p.inv = TUNE.iframes; this.fx.ring(p.x, p.z, 3, 0xffffff, 0.3); this.fx.shake(0.25); this.audio.sfx('crit'); this.fx.haptic(15);
       this.aoe(p.x, p.z, 3, 18 + this.level, 'steel', { kb: 6, noReact: true }, 0xd8e4f0); return;
     }
-    const d = Math.max(1, Math.round(dmg - s.armor));
-    p.hp -= d; p.inv = 0.7; p.hurt = 0.3; this.stage.hit = true; this.cresc = 0; this.c.dmgTaken += d;
+    // armour is a percentage with diminishing returns, so it can never make hits meaningless
+    const d = Math.max(1, Math.round(dmg * TUNE.armorK / (TUNE.armorK + s.armor)));
+    p.hp -= d; p.inv = TUNE.iframes; p.hurt = 0.3; this.stage.hit = true; this.cresc = 0; this.c.dmgTaken += d;
     this.fx.shake(0.45); this.fx.flash(0xff2040, 0.35); this.fx.hitstop(0.07); this.audio.sfx('hurt'); this.fx.haptic(40);
     if (s.feedback) this.aoe(p.x, p.z, 3.2 * s.area, 30, 'steel', { kb: 6 }, 0xff5ccd);
     if (p.hp <= 0) {
@@ -749,7 +762,7 @@ export class Run {
   spawn(kind, x, z, o = {}) {
     const k = ENEMIES[kind], st = this.stage;
     const tm = 1 + 0.6 * Math.min(1, st.t / st.dur);
-    const e = { k, x, z, hp: k.hp * this.eHp * tm * (o.hp || 1), r: k.r * (o.size || 1), spd: Math.min(k.spd * this.eSpd, 4.1) * rnd(0.9, 1.1), dmg: k.dmg * this.eDmg, t: rnd(10), flash: 0, kx: 0, kz: 0, burnT: 0, burn: 0, chillT: 0, shockT: 0, psn: 0, psnT: 0, hexT: 0, stun: 0, orbCd: 0, dotT: 0, cd: rnd(1, 3), mode: 0, mt: 0, y: 0, color: o.color || st.biome.tint, scale: (k.scale || 1) * (o.size || 1), elite: !!o.elite, spr: k.spr };
+    const e = { k, x, z, hp: k.hp * this.eHp * tm * (o.hp || 1), r: k.r * (o.size || 1), spd: Math.min(k.spd * this.eSpd, TUNE.spdCap) * rnd(0.92, 1.08), dmg: k.dmg * this.eDmg, t: rnd(10), flash: 0, kx: 0, kz: 0, burnT: 0, burn: 0, chillT: 0, shockT: 0, psn: 0, psnT: 0, hexT: 0, stun: 0, orbCd: 0, dotT: 0, cd: rnd(1, 3), mode: 0, mt: 0, y: 0, color: o.color || st.biome.tint, scale: (k.scale || 1) * (o.size || 1), elite: !!o.elite, spr: k.spr };
     e.maxHp = e.hp; this.enemies.push(e); return e;
   }
   spawnPos(r = 17) { const a = rnd(TAU), p = this.p; return [p.x + Math.cos(a) * r * 0.8 + p.dx * 2, p.z + Math.sin(a) * r * 1.15 + p.dz * 2]; }
@@ -770,7 +783,7 @@ export class Run {
     const st = this.stage, b = st.biome, n = st.n, p = this.p;
     const e = this.spawn('golem', p.x, p.z - 9, { color: 0xffffff });
     e.boss = true; e.bt = b.boss; e.spr = b.bossSpr; e.scale = 1; e.r = 1.25; e.name = b.bossName + (n >= 5 ? ' ' + 'I'.repeat(Math.min(3, Math.floor(n / 5))) + '+' : '');
-    e.hp = e.maxHp = 620 * Math.pow(2.05, n) * this.late * (1 + 0.22 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
+    e.hp = e.maxHp = 620 * Math.pow(2.05, n) * this.late * (1 + 0.42 * this.volume) * st.hpMul; e.spd = 2.3; e.dmg = 18 * this.eDmg; e.seqI = 0; e.mt = 0; e.mode = 'intro'; e.ang = 0; e.color = b.acc;
     e.seq = { slammer: ['walk', 'jump'], caster: ['spiral', 'fan', 'rest', 'summon'], charger: ['aim', 'dash', 'rest'], slamcaster: ['walk', 'jump', 'jump', 'spiral', 'fan'], conductor: ['spiral', 'fan', 'jump', 'jump', 'aim', 'dash', 'aim', 'dash', 'rain', 'summon'] }[e.bt];
     st.arena = { x: p.x, z: p.z - 2, r: 10.5 };
     this.spot = null;

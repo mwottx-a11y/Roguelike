@@ -69,6 +69,13 @@ the third takes the melody, and the arrangement re-orchestrates live whenever th
 Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 9 characters, new runes;
 30 feats; a fusion codex; Volume 0–12 difficulty ladder.
 
+## Difficulty
+
+All the dials live in `TUNE` at the top of `src/game.js` (enemy health, damage, speed, their growth per
+stage, invulnerability time after a hit, armour curve, boss heal). Armour is a percentage with
+diminishing returns: damage taken = damage x 10 / (10 + armour). Volume adds enemy health, damage and
+speed per step; winning at your highest Volume unlocks the next and selects it.
+
 ## Layout
 
 | file | what |
@@ -81,4 +88,5 @@ Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 9 characters, ne
 | `src/audio.js` | synth, sequencing, sound effects |
 | `src/ui/` | Phaser scenes (menu, run HUD, overlays) |
 | `tools/contenttest.mjs` | runs every rune, fusion, relic and tome through the sim |
+| `tools/pro.mjs` | competent-player bot used to tune difficulty: `node tools/pro.mjs <runs> <volume> <metaFraction>` |
 | `tools/sim.mjs` | headless balance bot: `node tools/sim.mjs <runs> <volume> <metaFraction> [all] [chars]` |

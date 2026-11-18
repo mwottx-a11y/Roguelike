@@ -289,7 +289,7 @@ export class RunScene extends Phaser.Scene {
       const sm = run.summary(), st = save.stats;
       save.echoes += sm.echoes; st.echoesTotal += sm.echoes; st.kills += sm.kills; st.runs++; st.time += sm.time; if (sm.won) st.wins++;
       st.bestStage = Math.max(st.bestStage, sm.cleared); st.bestLevel = Math.max(st.bestLevel, sm.level); st.bestCombo = Math.max(st.bestCombo, sm.maxCombo);
-      let volUp = false; if (sm.won && run.volume >= save.maxVolume && save.maxVolume < 12) { save.maxVolume++; volUp = true; }
+      let volUp = false; if (sm.won && run.volume >= save.maxVolume && save.maxVolume < 12) { save.maxVolume++; save.volume = save.maxVolume; volUp = true; }
       for (const id of run.fusedIds) if (!save.fusions.includes(id)) save.fusions.push(id);
       const feats = checkFeats(sm); persist();
       this.banked = { sm, feats, volUp };
@@ -305,7 +305,7 @@ export class RunScene extends Phaser.Scene {
     const et = txt(this, o, x, y, '+0 ECHOES', 26, C.pink, 0.5, 0.5, { bold: true, stroke: 5 });
     this.tweens.addCounter({ from: 0, to: sm.echoes, duration: 900, ease: 'Cubic.easeOut', onUpdate: tw => et.setText(`+${Math.round(tw.getValue())} ECHOES`) });
     y += 22; txt(this, o, x, y, `TOTAL ${save.echoes}`, 10, C.dim); y += 20;
-    const notes = feats.map(f => `FEAT: ${f.name}  +${f.echo}${f.unlock ? '  (new rune: ' + RUNES[f.unlock].name + ')' : ''}`); if (volUp) notes.unshift(`VOLUME ${save.maxVolume} UNLOCKED`);
+    const notes = feats.map(f => `FEAT: ${f.name}  +${f.echo}${f.unlock ? '  (new rune: ' + RUNES[f.unlock].name + ')' : ''}`); if (volUp) notes.unshift(`VOLUME ${save.maxVolume} UNLOCKED - your next run starts there`);
     notes.slice(0, 5).forEach((s, i) => { const t = txt(this, o, x, y + i * 15, s, 10, C.gold, 0.5, 0.5, { bold: true }); t.setAlpha(0); this.tweens.add({ targets: t, alpha: 1, delay: 600 + i * 200, duration: 200 }); });
     const by = Math.max(y + 90, m.UH - m.bot - 120);
     btn(this, o, x, by, 220, 48, 'PLAY AGAIN', () => this.scene.restart(), { size: 22, fill: 0x7a1f6a, border: 0xff5ccd, sfx: 'pick' });

@@ -35,7 +35,7 @@ export const RUNES = {
   dynamo: { name: 'Dynamo', elem: 'volt', type: 'spell', cost: 130, desc: 'Discharge around you. The further you ran since the last one, the harder it hits.', up: ['+dmg', 'bigger', '+dmg', 'stuns'] },
   siphon: { name: 'Soul Siphon', elem: 'void', type: 'spell', cost: 170, desc: 'Drains nearby foes and heals you a little.', up: ['+dmg', '+1 target', '+dmg', '+1 target, heals more'] },
   roots: { name: 'Grasping Roots', elem: 'nature', type: 'spell', cost: 0, desc: 'Roots every foe near you in place. Poisons.', up: ['+dmg', 'bigger', 'holds longer', '+dmg'] },
-  aegis: { name: 'Aegis', elem: 'steel', type: 'spell', cost: 0, desc: 'Pulses damage. Every 3rd cast forges a shield that blocks one hit.', up: ['+dmg', 'hold 2 shields', 'every 2nd cast', 'hold 3 shields'] },
+  aegis: { name: 'Aegis', elem: 'steel', type: 'spell', cost: 0, desc: 'Pulses damage. Every 10 seconds it forges a shield that blocks one hit.', up: ['+dmg', 'hold 2 shields', 'every 7 seconds', 'hold 3 shields'] },
   hound: { name: 'Shade Hound', elem: 'void', type: 'spell', cost: 200, desc: 'Summons a hound that hunts foes on its own.', up: ['+dmg', 'lasts longer', '+dmg', '+1 hound'] },
   amp: { name: 'Amp', elem: 'mod', type: 'mod', cost: 0, desc: 'The NEXT spell deals +80% damage.', up: ['+100%', '+120%', '+140%', '+160%'] },
   twin: { name: 'Twin', elem: 'mod', type: 'mod', cost: 0, desc: 'The NEXT spell is cast twice.', up: ['copy dmg up', 'copy dmg up', 'cast 3 times', 'full dmg copies'] },
@@ -86,8 +86,8 @@ export const PASSIVES = {
   crit: { name: 'Precision', icon: 'i_star', max: 6, desc: '+7% crit chance' },
   slot: { name: 'Extra Slot', icon: 'i_plus', max: 3, rare: true, desc: '+1 wheel slot' },
   multi: { name: 'Polyphony', icon: 'i_multi', max: 2, rare: true, desc: '+1 projectile on most spells' },
-  regen: { name: 'Regrowth', icon: 'i_leaf', max: 4, desc: '+0.5 HP per second' },
-  armor: { name: 'Plating', icon: 'i_shield', max: 4, desc: '-2 damage from every hit' },
+  regen: { name: 'Regrowth', icon: 'i_leaf', max: 4, desc: '+0.25 HP per second' },
+  armor: { name: 'Plating', icon: 'i_shield', max: 4, desc: '+2 armor (each point trims damage taken, with diminishing returns)' },
   growth: { name: 'Insight', icon: 'i_book', max: 4, desc: '+10% XP gained' },
   sustain: { name: 'Sustain', icon: 'i_note', max: 5, desc: '+15% duration for zones, summons and blades' },
   agility: { name: 'Agility', icon: 'i_boot', max: 4, desc: 'Dash recharges 12% faster' },
@@ -105,7 +105,7 @@ export const RELICS = {
   lens: { name: 'Focus Lens', icon: 'i_star', desc: '+12% crit chance, +30% crit damage.', f: s => { s.crit += 0.12; s.critMul += 0.3; } },
   lodestone: { name: 'Lodestone', icon: 'i_magnet', desc: '+60% pickup range, +15% XP.', f: s => { s.magnet *= 1.6; s.xpMul *= 1.15; } },
   splitter: { name: 'Splitter', icon: 'i_multi', desc: '+1 projectile on most spells.', f: s => { s.multi += 1; } },
-  carapace: { name: 'Carapace', icon: 'i_shield', desc: '-4 damage from every hit.', f: s => { s.armor += 4; } },
+  carapace: { name: 'Carapace', icon: 'i_shield', desc: '+4 armor: roughly 25% less damage taken.', f: s => { s.armor += 4; } },
   glass: { name: 'Glass Cannon', icon: 'i_skull', pact: true, desc: '+60% damage, -35% max HP.', f: s => { s.dmg *= 1.6; s.maxHpMul *= 0.65; } },
   fang: { name: 'Vampire Fang', icon: 'i_fang', desc: 'Kills have a 6% chance to heal 2 HP.', f: s => { s.leech += 0.06; } },
   feather: { name: 'Phoenix Feather', icon: 'i_feather', desc: 'Revive once with half HP.', f: s => { s.revives += 1; } },
@@ -171,8 +171,8 @@ export const META = [
   { id: 'wisdom', name: 'Wisdom', icon: 'i_book', max: 6, cost: 35, g: 1.6, desc: '+5% XP per rank', f: (s, n) => { s.xpMul *= 1 + 0.05 * n; } },
   { id: 'greed', name: 'Greed', icon: 'i_coin', max: 5, cost: 30, g: 1.6, desc: '+12% gold per rank', f: (s, n) => { s.goldMul *= 1 + 0.12 * n; } },
   { id: 'crit', name: 'Precision', icon: 'i_star', max: 5, cost: 45, g: 1.6, desc: '+2% crit chance per rank', f: (s, n) => { s.crit += 0.02 * n; } },
-  { id: 'armor', name: 'Plating', icon: 'i_shield', max: 4, cost: 80, g: 2, desc: '-1 damage taken per rank', f: (s, n) => { s.armor += n; } },
-  { id: 'regen', name: 'Regrowth', icon: 'i_leaf', max: 4, cost: 70, g: 2, desc: '+0.2 HP/s per rank', f: (s, n) => { s.regen += 0.2 * n; } },
+  { id: 'armor', name: 'Plating', icon: 'i_shield', max: 4, cost: 80, g: 2, desc: '+1 armor per rank (about 8% less damage each, diminishing)', f: (s, n) => { s.armor += n; } },
+  { id: 'regen', name: 'Regrowth', icon: 'i_leaf', max: 4, cost: 70, g: 2, desc: '+0.1 HP/s per rank', f: (s, n) => { s.regen += 0.1 * n; } },
   { id: 'area', name: 'Reverb', icon: 'i_ring', max: 5, cost: 50, g: 1.7, desc: '+4% spell size per rank', f: (s, n) => { s.area *= 1 + 0.04 * n; } },
   { id: 'drop', name: 'Hype', icon: 'i_bolt', max: 5, cost: 40, g: 1.6, desc: 'DROP charges 10% faster per rank', f: (s, n) => { s.dropGain *= 1 + 0.1 * n; } },
   { id: 'reroll', name: 'Rerolls', icon: 'i_dice', max: 4, cost: 60, g: 1.9, desc: '+1 reroll per run per rank', f: (s, n) => { s.rerolls += n; } },
@@ -222,7 +222,7 @@ export const MUTATORS = [
 ];
 
 export const VOLUME_MAX = 12;
-export const volumeDesc = v => v === 0 ? 'Standard difficulty.' : `Enemies +${v * 22}% HP, +${v * 11}% dmg. Echoes +${v * 25}%.` + (v >= 4 ? ' Faster foes.' : '') + (v >= 8 ? ' Bosses enraged.' : '');
+export const volumeDesc = v => v === 0 ? 'Standard difficulty.' : `Enemies +${Math.round((0.42 * v + 0.03 * v * v) * 100)}% HP, +${v * 20}% dmg, +${Math.min(20, v * 2)}% speed. Echoes +${v * 25}%.` + (v >= 8 ? ' Bosses enraged.' : '');
 
 export const FEATS = [
   { id: 'first', name: 'Sound Check', desc: 'Finish a run.', echo: 20, t: (s, r) => r },
