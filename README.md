@@ -36,10 +36,18 @@ Desktop: WASD / arrows, Space = dash, E = drop, Esc = pause.
 4. Backstage shop, then pick the next stage's twist (harder mutators pay better).
 5. Beat stage 5's Conductor to win — or keep going for an encore.
 
-Depth: 16 spells, 7 modifiers, elemental reactions (Shatter, Overload, Deep Freeze, Blight),
-neighbour resonance, 24 relics, 12 tomes.
+Depth: 24 spells, 13 modifiers, elemental reactions (Shatter, Overload, Deep Freeze, Blight),
+neighbour resonance, 41 relics, 5 cursed pacts, 18 tomes.
 
-**Fusions.** Two MAX-level spells sitting side by side can merge into one of 10 fusion runes
+Some of it changes how you play rather than how hard you hit: Mirror Decoy pulls the crowd off you,
+Ember Mines and Frost Wake reward kiting, Dynamo scales with distance run, Aegis forges shields,
+Shade Hound fights on its own. Modifiers like Coda (skip back to slot 1 every other loop), Transmute
+(random element), Staccato (kills explode) and Blood Note (pay HP for damage) reshape the wheel.
+Relics such as Rest Beat (stand still), Tour Bus (keep moving), Rubato (dash fires the next slot),
+Minimalist (empty slots are power) and Bass Cannon (DROP casts everything) push whole builds.
+Pacts are free at the shop and always cost something.
+
+**Fusions.** Two MAX-level spells sitting side by side can merge into one of 14 fusion runes
 (Fireball + Meteor = Supernova, Chain Spark + Storm Totem = Tesla Field, ...). The fusion takes one
 slot and frees the other. The wheel shows a link marker between neighbours that form a recipe.
 
@@ -58,8 +66,8 @@ Runes are weighted by level. The strongest class drives drums and bass, the seco
 the third takes the melody, and the arrangement re-orchestrates live whenever the wheel changes
 (the key, chords and tune stay put until the next stage).
 
-Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 7 characters, new runes;
-27 feats; a fusion codex; Volume 0–12 difficulty ladder.
+Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 9 characters, new runes;
+30 feats; a fusion codex; Volume 0–12 difficulty ladder.
 
 ## Layout
 
@@ -72,4 +80,5 @@ Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 7 characters, ne
 | `src/music.js` | procedural composer (pure data) |
 | `src/audio.js` | synth, sequencing, sound effects |
 | `src/ui/` | Phaser scenes (menu, run HUD, overlays) |
+| `tools/contenttest.mjs` | runs every rune, fusion, relic and tome through the sim |
 | `tools/sim.mjs` | headless balance bot: `node tools/sim.mjs <runs> <volume> <metaFraction> [all] [chars]` |

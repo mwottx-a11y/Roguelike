@@ -88,17 +88,17 @@ export class MenuScene extends Phaser.Scene {
 
   // generic grid + detail layout
   grid(title, items, detail, pad = 0) {
-    const r = this.root, m = this.m, x = m.cx, cols = 5, cell = 62, y0 = 96 + m.top + pad;
+    const big = items.length > 30, r = this.root, m = this.m, x = m.cx, cols = big ? 7 : 5, cell = big ? 46 : 62, half = big ? 21 : 28, y0 = (big ? 90 : 96) + m.top + pad;
     this.header(title);
     items.forEach((it, i) => {
       const cx = x - (cols - 1) * cell / 2 + (i % cols) * cell, cy = y0 + Math.floor(i / cols) * cell, c = this.add.container(cx, cy); r.add(c);
       const g = this.add.graphics(); c.add(g);
       const sel = i === this.sel;
-      g.fillStyle(sel ? 0xffffff : C.line, 1); g.fillRect(-28, -28, 56, 56); g.fillStyle(sel ? C.panel2 : C.panel, 1); g.fillRect(-26, -26, 52, 52);
-      const ic = img(this, c, 0, -6, it.icon, it.scale || 3, it.tint); if (it.dim) ic.setAlpha(0.35);
-      if (it.lock) img(this, c, 16, -16, 'i_lock', 1.5, 0x9a94b8);
-      txt(this, c, 0, 18, it.sub || '', 9, it.subColor || C.dim);
-      tap(this, c, 56, 56, () => { this.sel = i; this.confirm = false; G.audio.sfx('ui'); this.build(); });
+      g.fillStyle(sel ? 0xffffff : C.line, 1); g.fillRect(-half, -half, half * 2, half * 2); g.fillStyle(sel ? C.panel2 : C.panel, 1); g.fillRect(-half + 2, -half + 2, half * 2 - 4, half * 2 - 4);
+      const ic = img(this, c, 0, big ? -4 : -6, it.icon, big ? 2 : it.scale || 3, it.tint); if (it.dim) ic.setAlpha(0.35);
+      if (it.lock) img(this, c, half - 10, -half + 10, 'i_lock', big ? 1 : 1.5, 0x9a94b8);
+      txt(this, c, 0, big ? 14 : 18, it.sub || '', big ? 8 : 9, it.subColor || C.dim);
+      tap(this, c, half * 2, half * 2, () => { this.sel = i; this.confirm = false; G.audio.sfx('ui'); this.build(); });
     });
     const d = detail(items[this.sel], this.sel), py = y0 + Math.ceil(items.length / cols) * cell + 52;
     panel(this, r, x, py, 320, 132);

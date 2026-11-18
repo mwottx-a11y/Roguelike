@@ -29,12 +29,26 @@ export const RUNES = {
   wave: { name: 'Bass Wave', elem: 'steel', type: 'spell', cost: 0, feat: 'kills1k', desc: 'Shockwave cone with heavy knockback.', up: ['+dmg', 'wider', '+dmg', 'stuns'] },
   spores: { name: 'Spore Cloud', elem: 'nature', type: 'spell', cost: 110, desc: 'Lingering toxic cloud.', up: ['+dmg', 'bigger cloud', '+dmg', 'lasts longer'] },
   beam: { name: 'Prism Beam', elem: 'arcane', type: 'spell', cost: 0, feat: 'win', desc: 'Instant beam through every foe in a line.', up: ['+dmg', 'wider', '+dmg', 'double hit'] },
+  mines: { name: 'Ember Mines', elem: 'fire', type: 'spell', cost: 0, desc: 'Drops mines where you stand. Lure foes over them.', up: ['+dmg', '+1 mine', '+dmg', '+1 mine, bigger blast'] },
+  wake: { name: 'Frost Wake', elem: 'frost', type: 'spell', cost: 100, desc: 'For a few seconds your path freezes behind you.', up: ['+dmg', 'wider trail', '+dmg', 'lasts longer'] },
+  decoy: { name: 'Mirror Decoy', elem: 'arcane', type: 'spell', cost: 160, desc: 'A decoy that foes chase instead of you. Then it bursts.', up: ['+dmg', 'lasts longer', '+dmg', 'huge burst'] },
+  dynamo: { name: 'Dynamo', elem: 'volt', type: 'spell', cost: 130, desc: 'Discharge around you. The further you ran since the last one, the harder it hits.', up: ['+dmg', 'bigger', '+dmg', 'stuns'] },
+  siphon: { name: 'Soul Siphon', elem: 'void', type: 'spell', cost: 170, desc: 'Drains nearby foes and heals you a little.', up: ['+dmg', '+1 target', '+dmg', '+1 target, heals more'] },
+  roots: { name: 'Grasping Roots', elem: 'nature', type: 'spell', cost: 0, desc: 'Roots every foe near you in place. Poisons.', up: ['+dmg', 'bigger', 'holds longer', '+dmg'] },
+  aegis: { name: 'Aegis', elem: 'steel', type: 'spell', cost: 0, desc: 'Pulses damage. Every 3rd cast forges a shield that blocks one hit.', up: ['+dmg', 'hold 2 shields', 'every 2nd cast', 'hold 3 shields'] },
+  hound: { name: 'Shade Hound', elem: 'void', type: 'spell', cost: 200, desc: 'Summons a hound that hunts foes on its own.', up: ['+dmg', 'lasts longer', '+dmg', '+1 hound'] },
   amp: { name: 'Amp', elem: 'mod', type: 'mod', cost: 0, desc: 'The NEXT spell deals +80% damage.', up: ['+100%', '+120%', '+140%', '+160%'] },
   twin: { name: 'Twin', elem: 'mod', type: 'mod', cost: 0, desc: 'The NEXT spell is cast twice.', up: ['copy dmg up', 'copy dmg up', 'cast 3 times', 'full dmg copies'] },
   echo: { name: 'Echo', elem: 'mod', type: 'mod', cost: 80, desc: 'Re-casts the PREVIOUS spell at 60% power.', up: ['70%', '80%', '90%', '110%'] },
   grow: { name: 'Swell', elem: 'mod', type: 'mod', cost: 70, desc: 'The NEXT spell is 40% larger.', up: ['50%', '60%', '70%', '90%'] },
   sharp: { name: 'Sharp', elem: 'mod', type: 'mod', cost: 0, feat: 'level15', desc: 'The NEXT spell always crits.', up: ['+crit dmg', '+crit dmg', '+crit dmg', '+crit dmg'] },
   grace: { name: 'Grace Note', elem: 'mod', type: 'mod', cost: 140, desc: 'Takes no time: the next slot fires instantly, +15% dmg.', up: ['+25%', '+35%', '+45%', '+60%'] },
+  blood: { name: 'Blood Note', elem: 'mod', type: 'mod', cost: 0, desc: 'Costs 4 HP. The NEXT spell deals +150% damage.', up: ['+170%', '+190%', '+210%', '+240%'] },
+  coda: { name: 'Coda', elem: 'mod', type: 'mod', cost: 150, desc: 'Every other loop, jump back to slot 1. NEXT spell +35% damage.', up: ['+45%', '+55%', '+65%', '+80%'] },
+  reprise: { name: 'Reprise', elem: 'mod', type: 'mod', cost: 110, desc: 'Re-casts the FIRST spell on your wheel at 70% power.', up: ['80%', '90%', '100%', '120%'] },
+  transmute: { name: 'Transmute', elem: 'mod', type: 'mod', cost: 160, desc: 'The NEXT spell strikes as a random element (+25% dmg). Great for reactions.', up: ['+30%', '+35%', '+40%', '+50%'] },
+  staccato: { name: 'Staccato', elem: 'mod', type: 'mod', cost: 0, desc: 'Foes killed by the NEXT spell explode.', up: ['bigger pops', 'bigger pops', 'bigger pops', 'huge pops'] },
+  fermata: { name: 'Fermata', elem: 'mod', type: 'mod', cost: 100, desc: 'The NEXT spell lasts 80% longer (zones, summons, blades).', up: ['100%', '120%', '140%', '180%'] },
   cresc: { name: 'Crescendo', elem: 'mod', type: 'mod', cost: 0, feat: 'nohit', desc: 'Each pass: +4% damage (max 10 stacks). Resets when you are hit.', up: ['+5%', '+6%', '+7%', '+9%'] },
 };
 export const RUNE_IDS = Object.keys(RUNES);
@@ -51,6 +65,10 @@ export const FUSIONS = [
   { id: 'f_thermal', a: 'fireball', b: 'nova', name: 'Thermal Shock', elem: 'frost', desc: 'Frost ring, then a fire ring: everything Shatters.' },
   { id: 'f_prism', a: 'chain', b: 'beam', name: 'Prism Storm', elem: 'arcane', desc: 'A heavy beam; every foe it hits arcs lightning.' },
   { id: 'f_boom', a: 'wave', b: 'blades', name: 'Sonic Boom', elem: 'steel', desc: 'A shockwave in all directions. Huge knockback and stun.' },
+  { id: 'f_pack', a: 'decoy', b: 'hound', name: 'Phantom Pack', elem: 'void', desc: 'Three hounds and a decoy to feed them.' },
+  { id: 'f_jugger', a: 'dynamo', b: 'aegis', name: 'Juggernaut', elem: 'steel', desc: 'You become a wrecking ball: foes you touch are crushed.' },
+  { id: 'f_parasite', a: 'siphon', b: 'roots', name: 'Parasite', elem: 'nature', desc: 'Roots a huge area and drinks from everything held.' },
+  { id: 'f_lane', a: 'mines', b: 'wake', name: 'Scorched Trail', elem: 'fire', desc: 'Your path burns, freezes and is seeded with mines.' },
 ];
 for (const f of FUSIONS) RUNES[f.id] = { name: f.name, elem: f.elem, type: 'spell', cost: 0, fusion: true, desc: f.desc, up: [] };
 export const fusionOf = (x, y) => FUSIONS.find(f => (f.a === x && f.b === y) || (f.a === y && f.b === x));
@@ -71,6 +89,12 @@ export const PASSIVES = {
   regen: { name: 'Regrowth', icon: 'i_leaf', max: 4, desc: '+0.5 HP per second' },
   armor: { name: 'Plating', icon: 'i_shield', max: 4, desc: '-2 damage from every hit' },
   growth: { name: 'Insight', icon: 'i_book', max: 4, desc: '+10% XP gained' },
+  sustain: { name: 'Sustain', icon: 'i_note', max: 5, desc: '+15% duration for zones, summons and blades' },
+  agility: { name: 'Agility', icon: 'i_boot', max: 4, desc: 'Dash recharges 12% faster' },
+  dstop: { name: 'Double Stop', icon: 'i_multi', max: 5, desc: '+6% chance any spell casts twice' },
+  finisher: { name: 'Finisher', icon: 'i_skull', max: 5, desc: '+12% damage to foes below half HP' },
+  hype: { name: 'Hype', icon: 'i_bolt', max: 4, desc: 'DROP charges 20% faster' },
+  fortune: { name: 'Fortune', icon: 'i_dice', max: 3, desc: '+1 reroll now, rarer choices appear more' },
 };
 
 export const RELICS = {
@@ -82,7 +106,7 @@ export const RELICS = {
   lodestone: { name: 'Lodestone', icon: 'i_magnet', desc: '+60% pickup range, +15% XP.', f: s => { s.magnet *= 1.6; s.xpMul *= 1.15; } },
   splitter: { name: 'Splitter', icon: 'i_multi', desc: '+1 projectile on most spells.', f: s => { s.multi += 1; } },
   carapace: { name: 'Carapace', icon: 'i_shield', desc: '-4 damage from every hit.', f: s => { s.armor += 4; } },
-  glass: { name: 'Glass Cannon', icon: 'i_skull', desc: '+60% damage, -35% max HP.', f: s => { s.dmg *= 1.6; s.maxHpMul *= 0.65; } },
+  glass: { name: 'Glass Cannon', icon: 'i_skull', pact: true, desc: '+60% damage, -35% max HP.', f: s => { s.dmg *= 1.6; s.maxHpMul *= 0.65; } },
   fang: { name: 'Vampire Fang', icon: 'i_fang', desc: 'Kills have a 6% chance to heal 2 HP.', f: s => { s.leech += 0.06; } },
   feather: { name: 'Phoenix Feather', icon: 'i_feather', desc: 'Revive once with half HP.', f: s => { s.revives += 1; } },
   fork: { name: 'Tuning Fork', icon: 'i_fork', desc: 'Empty slots fire piercing plucks for triple damage.', f: s => { s.fork = 1; } },
@@ -97,9 +121,33 @@ export const RELICS = {
   piggy: { name: 'Gold Record', icon: 'i_coin', desc: '+50% gold. Every 100 gold held: +4% damage.', f: s => { s.goldMul *= 1.5; s.goldDmg = 1; } },
   thornmail: { name: 'Feedback', icon: 'i_speaker', desc: 'When hit, blast everything nearby.', f: s => { s.feedback = 1; } },
   quick: { name: 'Quickstep', icon: 'i_boot', desc: '+15% move speed, +1 dash charge.', f: s => { s.speed *= 1.15; s.dashes += 1; } },
+  stillness: { name: 'Rest Beat', icon: 'i_clock', desc: 'Stand still for a moment: +45% damage until you move.', f: s => { s.still = 1; } },
+  momentum: { name: 'Tour Bus', icon: 'i_boot', desc: 'Keep moving: +4% damage per second, up to +36%.', f: s => { s.momentum = 1; } },
+  stagedive: { name: 'Stage Dive', icon: 'i_boot', desc: 'Dashing damages foes you pass through. A kill refunds the dash.', f: s => { s.dive = 1; } },
+  gemshot: { name: 'Crowd Favourite', icon: 'i_star', desc: 'Picking up XP has a 25% chance to fire a bolt.', f: s => { s.gemShot = 1; } },
+  poly: { name: 'Polyrhythm', icon: 'i_note', desc: 'Every 4th beat also fires another random spell at 60%.', f: s => { s.poly = 1; } },
+  finale: { name: 'Finale', icon: 'i_note', desc: 'The LAST slot of the wheel is cast twice.', f: s => { s.finale = 1; } },
+  minimalist: { name: 'Minimalist', icon: 'i_ring', desc: '+20% damage for every EMPTY wheel slot.', f: s => { s.minimal = 1; } },
+  purist: { name: 'Purist', icon: 'i_flask', desc: 'If all your spells share one element: +50% damage.', f: s => { s.purist = 1; } },
+  eclectic: { name: 'Eclectic', icon: 'i_flask', desc: '+9% damage per different element on the wheel.', f: s => { s.eclectic = 1; } },
+  blues: { name: 'The Blues', icon: 'i_heart', desc: 'Below half HP: +40% damage and +15% wheel speed.', f: s => { s.blues = 1; } },
+  majorkey: { name: 'Major Key', icon: 'i_heart', desc: 'At full HP: +25% damage.', f: s => { s.majorKey = 1; } },
+  cheque: { name: 'Royalty Cheque', icon: 'i_coin', desc: 'Each boss pays 15% interest on your gold (max 60).', f: s => { s.cheque = 1; } },
+  chemistry: { name: 'Chemistry Set', icon: 'i_flask', desc: 'Elemental reactions heal 1 HP.', f: s => { s.chem = 1; } },
+  roadie: { name: 'Roadie', icon: 'i_shield', desc: 'Every 18 seconds, gain a shield that blocks one hit.', f: s => { s.roadie = 1; } },
+  headhunter: { name: 'Headhunter', icon: 'i_skull', desc: '+50% damage to elites and bosses.', f: s => { s.hunter = 1; } },
+  basscannon: { name: 'Bass Cannon', icon: 'i_speaker', desc: 'DROP also casts every spell on your wheel at once.', f: s => { s.bassCannon = 1; } },
+  coldopen: { name: 'Cold Open', icon: 'i_flake', desc: 'Foes close to you move 30% slower.', f: s => { s.coldOpen = 1; } },
+  rubato: { name: 'Rubato', icon: 'i_clock', desc: 'Dashing instantly fires the next wheel slot.', f: s => { s.rubato = 1; } },
+  // pacts: free at the shop, powerful, and they cost you something
+  heavystrings: { name: 'Heavy Strings', icon: 'i_fork', pact: true, desc: '+80% damage. The wheel turns 20% slower.', f: s => { s.dmg *= 1.8; s.tempo *= 0.8; } },
+  loudpedal: { name: 'Loud Pedal', icon: 'i_speaker', pact: true, desc: '+40% damage. Enemies move 15% faster.', f: s => { s.dmg *= 1.4; s.enemySpd *= 1.15; } },
+  tinnitus: { name: 'Tinnitus', icon: 'i_bolt', pact: true, desc: 'Double XP. Max HP halved.', f: s => { s.xpMul *= 2; s.maxHpMul *= 0.5; } },
+  stagefright: { name: 'Stage Fright', icon: 'i_boot', pact: true, desc: '+60% damage while moving. You cannot dash.', f: s => { s.fright = 1; s.noDash = 1; } },
   harmony: { name: 'Harmonics', icon: 'i_ring', desc: 'Resonance between matching neighbours is doubled.', f: s => { s.resMul = 2; } },
 };
-export const RELIC_IDS = Object.keys(RELICS);
+export const RELIC_IDS = Object.keys(RELICS).filter(id => !RELICS[id].pact);
+export const PACT_IDS = Object.keys(RELICS).filter(id => RELICS[id].pact);
 
 export const CHARS = [
   { id: 'cantor', name: 'CANTOR', cost: 0, start: ['bolt'], desc: 'Balanced apprentice.', perk: '+10% XP', pal: { h: '#3b5dc9', H: '#ffcd75', r: '#29366f' }, f: s => { s.xpMul *= 1.1; } },
@@ -108,6 +156,8 @@ export const CHARS = [
   { id: 'volta', name: 'VOLTA', cost: 400, start: ['chain'], desc: 'Lives fast.', perk: '+18% tempo, -20 HP', pal: { h: '#ffcd75', H: '#ef7d57', r: '#566c86' }, f: s => { s.tempo *= 1.18; s.maxHp -= 20; } },
   { id: 'thane', name: 'THANE', cost: 600, start: ['blades'], desc: 'Gets in close.', perk: '+3 armor, +1 dash', pal: { h: '#94b0c2', H: '#b13e53', r: '#333c57' }, f: s => { s.armor += 3; s.dashes += 1; } },
   { id: 'vex', name: 'VEX', cost: 900, start: ['thorns', 'amp'], desc: 'Wheel architect.', perk: '+1 slot, -10% dmg', pal: { h: '#5d275d', H: '#a7f070', r: '#38b764' }, f: s => { s.slots += 1; s.dmg *= 0.9; } },
+  { id: 'nyx', name: 'NYX', cost: 1200, start: ['hound'], desc: 'Never fights alone.', perk: 'Summons and zones last 40% longer', pal: { h: '#333c57', H: '#e04dff', r: '#5d275d' }, f: s => { s.dur *= 1.4; } },
+  { id: 'jive', name: 'JIVE', cost: 1800, start: ['dynamo', 'roots'], desc: 'Never stops moving.', perk: '+15% speed, +1 dash, -15 HP', pal: { h: '#ef7d57', H: '#73eff6', r: '#257179' }, f: s => { s.speed *= 1.15; s.dashes += 1; s.maxHp -= 15; } },
   { id: 'maestro', name: 'MAESTRO', cost: 1500, start: ['bolt', 'twin'], desc: 'Modifier virtuoso.', perk: 'Mods 30% stronger, +1 choice', pal: { h: '#1a1c2c', H: '#ff5ccd', r: '#f4f4f4' }, f: s => { s.modPow = 1.3; s.choices += 1; } },
 ];
 
@@ -196,6 +246,9 @@ export const FEATS = [
   { id: 'spot5', name: 'Limelight', desc: 'Claim 5 spotlights in one run.', echo: 50, t: (s, r) => r && r.spots >= 5 },
   { id: 'fuse1', name: 'Alchemist', desc: 'Fuse two runes.', echo: 80, t: (s, r) => r && r.fusions >= 1 },
   { id: 'fuse3', name: 'Grand Unification', desc: 'Perform 3 fusions in one run.', echo: 300, t: (s, r) => r && r.fusions >= 3 },
+  { id: 'pact', name: 'Faustian', desc: 'Accept a pact at the shop.', echo: 60, t: (s, r) => r && r.pacts >= 1 },
+  { id: 'relic10', name: 'Hoarder', desc: 'Hold 10 relics in one run.', echo: 200, t: (s, r) => r && r.relics >= 10 },
+  { id: 'shield', name: 'Not Today', desc: 'Block 10 hits with shields in one run.', echo: 80, t: (s, r) => r && r.blocks >= 10 },
   { id: 'vol3', name: 'Turn It Up', desc: 'Win on Volume 3.', echo: 300, t: (s, r) => r && r.cleared >= 5 && r.volume >= 3 },
   { id: 'vol6', name: 'Louder', desc: 'Win on Volume 6.', echo: 600, t: (s, r) => r && r.cleared >= 5 && r.volume >= 6 },
   { id: 'vol11', name: 'These Go To Eleven', desc: 'Win on Volume 11.', echo: 2000, t: (s, r) => r && r.cleared >= 5 && r.volume >= 11 },
@@ -220,6 +273,9 @@ export const TIPS = [
   'Higher Volume means tougher foes and far more Echoes.',
   'Stand in a SPOTLIGHT until it fills to claim its prize.',
   'Two MAX runes side by side can FUSE into something far stronger.',
+  'Pacts at the shop are free. Read the small print.',
+  'A Mirror Decoy pulls the crowd off you. Drop it, then run.',
+  'Dynamo hits harder the further you ran since its last cast.',
   'More wheel slots change the time signature. Six slots: 6/8, double time.',
   'Each spell class has a genre: fire is metal, frost is jazz, volt is funk...',
   'Your strongest spell class leads the band. Mix classes to mix genres.',

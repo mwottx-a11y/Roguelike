@@ -91,7 +91,7 @@ export class RunScene extends Phaser.Scene {
     box(g, L, 32 + top, 132, 14, 0x2a1020, C.ink);
     const hpq = Math.max(0, p.hp / s.maxHp); g.fillStyle(hpq < 0.3 ? 0xff3050 : 0xe0425e, 1); g.fillRect(L + 2, 34 + top, 128 * hpq, 10); g.fillStyle(0xffffff, 0.25); g.fillRect(L + 2, 34 + top, 128 * hpq, 3);
     h.meter.setText(run.meter); h.meterSub.setText(run.size >= 6 ? 'DOUBLE TIME' : 'TIME');
-    h.hp.setText(`${Math.ceil(p.hp)}/${s.maxHp}`); h.lvl.setText('LV ' + run.level); h.gold.setText(String(run.gold));
+    h.hp.setText(`${Math.ceil(p.hp)}/${s.maxHp}${run.shield ? '  +' + run.shield + ' SHIELD' : ''}`); h.lvl.setText('LV ' + run.level); h.gold.setText(String(run.gold));
     h.time.setText(st.boss ? 'BOSS' : st.bossDone ? 'CLEAR' : fmtTime(Math.max(0, st.dur - st.t))); h.time.setColor(st.boss ? C.red : C.text);
     h.stage.setText(`STAGE ${st.n + 1}  ${st.biome.name}${run.volume ? '  VOL ' + run.volume : ''}`);
     h.combo.setText(run.combo >= 5 ? 'x' + run.combo : ''); if (run.combo >= 5) h.combo.setScale(1 + Math.min(0.5, run.comboT > 2.4 ? 0.25 : 0));
@@ -107,7 +107,7 @@ export class RunScene extends Phaser.Scene {
     if (run.pend.any) { w.hl.fillStyle(0xffffff, 0.9); w.hl.fillRect(wx + run.step * sp - 4, -w.size / 2 - 5, 8, 3); }
     // buttons
     const circ = (c, q, col, ready, label) => { const G2 = c.g; G2.clear(); G2.fillStyle(C.ink, 0.55); G2.fillCircle(0, 0, 34); G2.lineStyle(4, 0x4a4266, 1); G2.strokeCircle(0, 0, 32); if (q > 0) { G2.lineStyle(4, col, 1); G2.beginPath(); G2.arc(0, 0, 32, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, q)); G2.strokePath(); } if (ready) { G2.fillStyle(col, 0.25 + 0.2 * run.beat); G2.fillCircle(0, 0, 30); } c.t.setText(label); c.t.setColor(ready ? C.text : C.dim); };
-    circ(h.dash, p.dashN >= s.dashes ? 1 : 1 - p.dashCd / 2.4, 0x73eff6, p.dashN > 0, s.dashes > 1 ? `DASH ${p.dashN}` : 'DASH');
+    circ(h.dash, p.dashN >= s.dashes ? 1 : 1 - p.dashCd / run.dashMax(), 0x73eff6, p.dashN > 0 && !s.noDash, s.dashes > 1 ? `DASH ${p.dashN}` : 'DASH');
     const dr = run.dropT > 0; circ(h.drop, dr ? run.dropT / s.dropDur : run.drop / 100, 0xff5ccd, run.drop >= 100 || dr, dr ? 'x2!' : 'DROP');
     h.drop.setScale(run.drop >= 100 ? 1.05 + 0.08 * run.beat : 1);
     // toasts
@@ -190,7 +190,7 @@ export class RunScene extends Phaser.Scene {
     } else if (opt.kind === 'fuse') {
       const R = RUNES[opt.id]; icon = 'rune_' + opt.id; name = R.name; col = 0xffcd75; tag = `FUSION  ${RUNES[opt.a].name} + ${RUNES[opt.b].name}`; desc = R.desc + '\nMerges both runes into one and frees a slot.';
     } else if (opt.kind === 'passive') { const P = PASSIVES[opt.id]; icon = P.icon; name = P.name; tag = `TOME  ${opt.lvl + 1}/${P.max}`; desc = P.desc; tint = 0xa7f070; col = 0xa7f070; }
-    else if (opt.kind === 'relic') { const R = RELICS[opt.id]; icon = R.icon; name = R.name; tag = 'RELIC'; desc = R.desc; tint = 0xffcd75; col = 0xffcd75; }
+    else if (opt.kind === 'relic') { const R = RELICS[opt.id]; icon = R.icon; name = R.name; tag = R.pact ? 'PACT  -  free, but read it twice' : 'RELIC'; desc = R.desc; tint = R.pact ? 0xff5c7a : 0xffcd75; col = R.pact ? 0xff5c7a : 0xffcd75; }
     else if (opt.kind === 'gold') { icon = 'i_coin'; name = `${opt.v} Gold`; tag = 'TREASURE'; desc = 'A little pocket money.'; tint = 0xffcd75; col = 0xffcd75; }
     else { icon = 'i_heart'; name = 'Encore Snack'; tag = 'HEAL'; desc = `Restore ${opt.v}% of your HP.`; tint = 0xff5c7a; col = 0xff5c7a; }
     const g = this.add.graphics(); c.add(g);
@@ -201,7 +201,7 @@ export class RunScene extends Phaser.Scene {
     const sm = h < 70;
     txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 2 : 8), tag, 9, hexs(col), 0, 0);
     txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 12 : 20), name, sm ? 14 : 16, C.text, 0, 0);
-    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 30 : 41), desc, sm ? 9 : 10, C.dim, 0, 0, { wrap: w - 76 - (price ? 50 : 0), ls: 1 });
+    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 29 : 41), desc, sm ? 8 : 10, C.dim, 0, 0, { wrap: w - 76 - (price ? 46 : 0), ls: 0 });
     if (price) c.price = txt(this, c, w / 2 - 10, 0, String(price), 16, C.gold, 1, 0.5, { bold: true });
     c.ic = ic; c.gfx = g;
     tap(this, c, w, h, () => cb(opt, c));
@@ -239,16 +239,16 @@ export class RunScene extends Phaser.Scene {
     txt(this, o, x, top, 'BACKSTAGE', 28, C.pink, 0.5, 0.5, { bold: true, stroke: 6 });
     const gold = txt(this, o, x, top + 24, '', 14, C.gold, 0.5, 0.5, { bold: true });
     const refresh = () => gold.setText(`GOLD ${run.gold}`); refresh();
-    const ch = Math.min(60, (m.UH - top - 330) / d.offers.length - 6);
+    const ch = Math.min(60, (m.UH - top - 300) / d.offers.length - 5);
     d.offers.forEach((of, i) => {
-      const c = this.card(o, x, top + 50 + i * (ch + 6) + ch / 2, 336, ch, of, (op, cc) => {
+      const c = this.card(o, x, top + 46 + i * (ch + 5) + ch / 2, 336, ch, of, (op, cc) => {
         if (op.sold) return;
         if (run.gold < op.price || (op.kind === 'heal' && run.p.hp >= run.s.maxHp)) { G.audio.sfx('deny'); return; }
         run.gold -= op.price; run.applyChoice(op); op.sold = true; G.audio.sfx('buy'); this.openOverlay('shop', d);
-      }, of.sold ? 'SOLD' : of.price);
+      }, of.sold ? 'SOLD' : of.price === 0 ? 'FREE' : of.price);
       if (of.sold) c.setAlpha(0.3); else if (run.gold < of.price) c.price.setColor(C.red);
     });
-    const wy = top + 50 + d.offers.length * (ch + 6) + 30;
+    const wy = top + 46 + d.offers.length * (ch + 5) + 28;
     this.editWheel(o, wy, () => {});
     const ny = wy + 62, nb = BIOMES[(run.stage.n + 1) % BIOMES.length];
     txt(this, o, x, ny, `NEXT: STAGE ${run.stage.n + 2}  ${nb.name}`, 12, hexs(nb.acc), 0.5, 0.5, { bold: true });

@@ -31,6 +31,7 @@ const HALF = {
   crystal: ['....c', '...cc', '...cw', '..ccw', '..csw', 'c.csw', 'ccssw', 'cscsw', 'cssss', 'cssss', '.bsss', '.bbbb'],
   brazier: ['...y.', '..yoy', '.yooy', '.ooro', 'ddddd', '.dddd', '..ddd', '...dd', '...dd', '..ddd'],
   speaker: ['eeeee', 'ekkkk', 'ekkdd', 'ekdda', 'ekkdd', 'ekkkk', 'ekkkk', 'ekkdd', 'ekdaa', 'ekdaa', 'ekkdd', 'eeeee'],
+  hound: ['p....p.', 'pp..pp.', 'ppppppp', 'pmppppp', 'ppppppp', '.pppppk', '..pppww', '.pp.pp.'],
   chest: ['.yyyy', 'yoooo', 'yoooo', 'yyyyw', 'yooow', 'yoooo', 'yyyyy'],
   totem: ['..y', '.yy', 'yyy', '.ee', '.ey', '.ee', '.ey', '.ee', 'eee'],
 };
@@ -80,11 +81,25 @@ const FULL = {
   r_grow: ['ww...ww', 'w.....w', '..www..', '..www..', '..www..', 'w.....w', 'ww...ww'],
   r_cresc: ['......w', '....ww.', '..ww...', 'ww.....', '..ww...', '....ww.', '......w'],
   r_twin: ['.w...w.', 'www.www', '.w...w.', '.......', '.w...w.', 'www.www', '.w...w.'],
+  r_mine: ['..w.w..', '.wwwww.', 'wwwwwww', '.ww.ww.', 'wwwwwww', '.wwwww.', '..w.w..'],
+  r_wake: ['ww...ww', '..w.w..', '...w...', '.......', 'ww...ww', '..w.w..', '...w...'],
+  r_decoy: ['..www..', '..www..', '...w...', '.wwwww.', '...w...', '..w.w..', '.w...w.'],
+  r_dynamo: ['.wwww..', 'w....w.', 'w..w..w', 'w.www.w', 'w..w...', '.w....w', '..wwww.'],
+  r_siphon: ['...w...', '..www..', '..www..', '.wwwww.', '.wwwww.', '.wwwww.', '..www..'],
+  r_roots: ['...w...', '...w...', '..www..', '.w.w.w.', 'w..w..w', 'w..w..w', '..w.w..'],
+  r_hound: ['.w...w.', '.ww.ww.', '.wwwww.', 'w.www.w', 'wwwwwww', '.ww.ww.', '..www..'],
+  r_coda: ['.wwww..', 'w....w.', 'w.....w', 'w...www', 'w....w.', '.w.....', '..www..'],
+  r_one: ['..ww...', '.www...', '..ww...', '..ww...', '..ww...', '..ww...', '.wwww..'],
+  r_dot: ['.......', '..www..', '.wwwww.', '.wwwww.', '.wwwww.', '..www..', '.......'],
+  r_ferm: ['..www..', '.w...w.', 'w.....w', 'w.....w', '.......', '...w...', '.......'],
 };
 const RUNE_GLYPH = {
   bolt: 'r_bolt', fireball: 'i_flame', nova: 'i_flake', chain: 'i_bolt', blades: 'i_sword', thorns: 'i_leaf', wisps: 'r_wisps', meteor: 'r_meteor',
   lance: 'r_lance', totem: 'r_totem', rift: 'r_rift', hex: 'i_skull', chakram: 'r_chakram', wave: 'i_speaker', spores: 'r_spores', beam: 'r_beam',
   f_starfall: 'i_star', f_supernova: 'r_meteor', f_glacier: 'i_flake', f_tesla: 'r_totem', f_halo: 'r_chakram', f_bloom: 'r_spores', f_horizon: 'r_rift', f_thermal: 'i_flame', f_prism: 'r_beam', f_boom: 'i_speaker',
+  mines: 'r_mine', wake: 'r_wake', decoy: 'r_decoy', dynamo: 'r_dynamo', siphon: 'r_siphon', roots: 'r_roots', aegis: 'i_shield', hound: 'r_hound',
+  blood: 'i_heart', coda: 'r_coda', reprise: 'r_one', transmute: 'i_flask', staccato: 'r_dot', fermata: 'r_ferm',
+  f_pack: 'r_hound', f_jugger: 'r_dynamo', f_parasite: 'r_roots', f_lane: 'r_mine',
   amp: 'r_amp', twin: 'r_twin', echo: 'r_echo', grow: 'r_grow', sharp: 'i_star', grace: 'i_note', cresc: 'r_cresc',
 };
 const DIGITS = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001', '111100111001111', '111100111101111', '111001001001001', '111101111101111', '111101111001111'];

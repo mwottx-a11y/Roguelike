@@ -25,6 +25,9 @@ export function loadSave() {
     if (raw) {
       const d = JSON.parse(raw), f = fresh();
       save = { ...f, ...d, stats: { ...f.stats, ...d.stats }, opts: { ...f.opts, ...d.opts } };
+      // content added after this save was made: grant anything that is free from the start
+      for (const id of f.runes) if (!save.runes.includes(id)) save.runes.push(id);
+      save.runes = save.runes.filter(id => RUNES[id]); save.chars = save.chars.filter(id => CHARS.some(c => c.id === id)); if (!save.chars.includes(save.char)) save.char = 'cantor';
     }
   } catch (e) { /* storage unavailable: play with a fresh profile */ }
   return save;

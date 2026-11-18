@@ -30,7 +30,7 @@ uniform sampler2D map; uniform vec3 uFog; uniform float uAdd;
 varying vec2 vUv; varying vec4 vCol; varying float vD;
 void main(){
   vec4 t = texture2D(map, vUv);
-  float fog = smoothstep(11.0, 19.0, vD);
+  float fog = smoothstep(13.0, 21.5, vD);
   if (uAdd > 0.5) { gl_FragColor = vec4(t.rgb * vCol.rgb * t.a * min(vCol.a, 1.4) * 0.62 * (1.0 - fog), 1.0); return; }
   if (t.a < 0.5) discard;
   vec3 col = mix(t.rgb * vCol.rgb, vec3(1.0), vCol.a);
@@ -96,7 +96,7 @@ void main(){
   col += uAcc * ring * 0.4 * (1.0 - uRing);
   if (uArena > 0.5) { float ad = length(w - uArenaPos.xz) - uArenaPos.y; col += vec3(1.0, 0.2, 0.3) * smoothstep(0.5, 0.0, abs(ad)) * (0.8 + 0.4 * uBeat); if (ad > 0.0) col *= 0.35; }
   col *= mix(1.7, 0.75, smoothstep(1.0, 11.0, d));
-  col = mix(col, uFog, smoothstep(11.0, 19.0, length(w - uCenter.xz)));
+  col = mix(col, uFog, smoothstep(13.0, 21.5, length(w - uCenter.xz)));
   gl_FragColor = vec4(col, 1.0);
 }`;
 const PILLAR_VS = `varying vec3 vW; varying vec3 vN;
@@ -108,7 +108,7 @@ void main(){
   float band = step(0.82, fract(vW.y * 1.2 + 0.1));
   if (vN.y < 0.5) col += uAcc * band * (0.35 + 0.9 * uBeat);
   col *= mix(1.3, 0.7, smoothstep(3.0, 12.0, d));
-  gl_FragColor = vec4(mix(col, uFog, smoothstep(11.0, 19.0, d)), 1.0);
+  gl_FragColor = vec4(mix(col, uFog, smoothstep(13.0, 21.5, d)), 1.0);
 }`;
 const FINAL = {
   uniforms: { tDiffuse: { value: null }, uFlash: { value: new THREE.Vector4(1, 1, 1, 0) }, uDrop: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } },
@@ -187,7 +187,7 @@ export class World {
     this.renderer.setSize(iw, ih, false); this.composer.setSize(iw, ih);
     this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
     const t = Math.tan(this.cam.fov * Math.PI / 360);
-    this.dist = Math.max(4.7 / (t * this.cam.aspect), 6.4 / t);
+    this.dist = Math.max(5.5 / (t * this.cam.aspect), 7.4 / t);
   }
   burst(x, z, color, n, o) {
     if (this.parts.length > 420) return;
@@ -227,7 +227,7 @@ export class World {
   drawProps(cx, cz, beat) {
     const b = this.b, M = this.main, A = this.add, seed = b.root + 1, C = 4;
     const gx = Math.round(cx / C), gz = Math.round(cz / C); let np = 0;
-    for (let i = -5; i <= 5; i++) for (let j = -6; j <= 5; j++) {
+    for (let i = -6; i <= 6; i++) for (let j = -7; j <= 6; j++) {
       const x0 = gx + i, z0 = gz + j, h = hash(x0, z0, seed); if (h > 0.3) continue;
       const x = x0 * C + (hash(x0, z0, seed + 1) - 0.5) * 2.4, z = z0 * C + (hash(x0, z0, seed + 2) - 0.5) * 2.4;
       if (Math.abs(x) < 2 && Math.abs(z) < 2) continue;
@@ -315,6 +315,11 @@ export class World {
       else if (g.type === 'chest') { M.spr('chest', g.x, 0, g.z, 1.3); A.add('glow', g.x, -0.3, g.z, 2.6, 2.6, 0xffcd75, 0.55 + 0.25 * Math.sin(t * 6)); A.add('ringthin', g.x, 0.1, g.z, 2.2, 2.2, 0xffcd75, 0.8, t, 1); }
     }
     A.pri = false;
+    // mines, decoy, hounds
+    for (const m of run.mines) { const armed = m.t > 0.35, bl = armed ? 0.5 + 0.5 * Math.sin(t * 8 + m.x) : 0.2; M.spr('r_mine', m.x, 0.02, m.z, 0.75, armed ? 0xff7a3d : 0x8a5a40); A.add('glow', m.x, -0.2, m.z, 1, 1, 0xff7a3d, 0.5 * bl); }
+    const dc = run.decoy;
+    if (dc) { const bl = dc.t < 0.8 && Math.floor(t * 16) % 2; M.add('shadow', dc.x, 0.02, dc.z + 0.05, 0.9, 0.42, 0xffffff, 0, 0, 1); M.spr('hero_' + run.char.id, dc.x, 0.05 + 0.08 * Math.sin(t * 6), dc.z, 1, bl ? 0xffffff : 0x9a7dff, bl ? 0.8 : 0.25); A.add('ringthin', dc.x, 0.1, dc.z, dc.r * 2, dc.r * 2, 0xb48cff, 0.5, t, 1); A.add('glow', dc.x, 0, dc.z, 2.2, 2.2, 0xb48cff, 0.6); }
+    for (const h of run.pets) { const sc = (h.big ? 1.15 : 0.9) * Math.min(1, h.t * 3); M.add('shadow', h.x, 0.02, h.z + 0.05, 0.8 * sc, 0.36 * sc, 0xffffff, 0, 0, 1); M.spr('hound', h.x, Math.abs(Math.sin(h.a * 12)) * 0.12, h.z, sc, 0xffffff, 0, h.fx || 1); A.add('glow', h.x, 0, h.z, 1.5, 1.5, 0xe04dff, 0.55); }
     // turrets
     for (const q of run.turrets) { M.add('shadow', q.x, 0.02, q.z, 0.8, 0.4, 0xffffff, 0, 0, 1); M.spr('totem', q.x, 0, q.z, 1.2); A.add('glow', q.x, 0.6, q.z, 1.2, 1.2, q.color, 0.7 + 0.3 * run.beat); }
     // enemies
@@ -341,6 +346,13 @@ export class World {
       A.add('glow', p.x, 0.1, p.z, 3.2, 3.2, drop ? 0xff5ccd : this.b.acc, 0.16 + 0.14 * run.beat + (drop ? 0.25 : 0), 0, 1);
       if (drop) A.add('ringthin', p.x, 0.12, p.z, 2.4 + run.beat, 2.4 + run.beat, 0xff5ccd, 1.2, t * 4, 1);
       A.add('ringthin', p.x, 0.11, p.z, 1.15 + 0.15 * run.beat, 1.15 + 0.15 * run.beat, 0xffffff, 0.55, 0, 1);
+      A.pri = true;
+      for (let k = 0; k < run.shield; k++) { const a = t * 2.5 + k / Math.max(1, run.shield) * TAU; M.spr('i_shield', p.x + Math.cos(a) * 0.85, 0.55, p.z + Math.sin(a) * 0.5, 0.55, 0xd8e4f0); }
+      if (run.shield > 0) A.add('ringthin', p.x, 0.13, p.z, 1.9, 1.9, 0xd8e4f0, 0.9, -t * 2, 1);
+      A.pri = false;
+      const jg = run.jugger; if (jg && jg.t > 0) { A.add('ring', p.x, 0.14, p.z, jg.r * 2, jg.r * 2, 0xffcd75, 1.1, t * 9, 1); A.add('glow', p.x, 0.1, p.z, jg.r * 2, jg.r * 2, 0xffcd75, 0.35, 0, 1); }
+      if (run.wake && run.wake.t > 0) A.add('ringthin', p.x, 0.12, p.z, 1.5, 1.5, run.wake.fire ? 0xff9a5d : 0x73eff6, 0.9, t * 5, 1);
+      if (run.stillT > 0.6 && run.s.still) A.add('ringthin', p.x, 0.12, p.z, 2.1 - 0.2 * run.beat, 2.1 - 0.2 * run.beat, 0xffcd75, 0.8, 0, 1);
     }
     // orbiting blades
     const ob = run.orbs;
