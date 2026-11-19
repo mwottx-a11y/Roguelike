@@ -122,17 +122,18 @@ export class Run {
     }
     return { w, first };
   }
-  // the mix a draft option would give (a new rune on a full wheel is assumed to replace the lowest level)
-  mixIf(o) {
+  // the mix a draft option would give, by the same rules as applyChoice. slot = the slot a new rune replaces on
+  // a full wheel (undefined: the first free slot)
+  mixIf(o, slot) {
     const wh = this.wheel.slice(0, this.size).map(r => r && { id: r.id, lvl: r.lvl });
-    if (o.kind === 'up') { if (wh[o.slot]) wh[o.slot].lvl++; else return null; }
-    else if (o.kind === 'rune') { let i = wh.findIndex(r => !r); if (i < 0) { i = 0; for (let k = 1; k < wh.length; k++) if (wh[k].lvl < wh[i].lvl) i = k; } wh[i] = { id: o.id, lvl: 1 }; }
+    if (o.kind === 'up') { let r = wh[o.slot]; if (!r || r.id !== o.id) r = wh.find(q => q && q.id === o.id && q.lvl < MAX_RUNE_LVL); if (!r) return null; r.lvl = Math.min(MAX_RUNE_LVL, r.lvl + 1); }
+    else if (o.kind === 'rune') { const i = slot === undefined ? wh.findIndex(r => !r) : slot; if (i < 0) return null; wh[Math.min(i, wh.length - 1)] = { id: o.id, lvl: 1 }; }
     else if (o.kind === 'fuse') { wh[o.i] = { id: o.id, lvl: 1 }; wh[o.j] = null; }
     else return null;
     return this.mixOf(wh);
   }
   // how fast the wheel turns right now (the music's tempo follows the same number)
-  stepRate() { const s = this.s; return s.tempo * (s.blues && this.p.hp < s.maxHp * 0.5 ? 1.15 : 1) * (this.dropT > 0 ? 2 : 1); }
+  stepRate(k = 1) { const s = this.s; return k * s.tempo * (s.blues && this.p.hp < s.maxHp * 0.5 ? 1.15 : 1) * (this.dropT > 0 ? 2 : 1); }
   // what the music's conductor may know about the fight (one reused object)
   sig() { const g = this._sig || (this._sig = {}), st = this.stage; g.prog = st.boss || st.bossDone ? 1 : Math.min(1, st.t / st.dur); g.kills = this.kills; g.bossHp = st.boss ? st.boss.hp / st.boss.maxHp : 1; return g; }
   stepLen() { return this.size >= 6 ? STEP_Q / 2 : STEP_Q; }
@@ -228,7 +229,7 @@ export class Run {
 
     // wheel
     if (this.state === 'play') {
-      this.stepT -= dt * this.stepRate();
+      this.stepT -= this.stepRate(dt);
       let guard = 0;
       while (this.stepT <= 0 && guard++ < 10) { this.stepT += this.stepLen(); this.fireStep(); }
     }

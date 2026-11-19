@@ -19,7 +19,7 @@ export class MenuScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off('resize', this.build, this));
   }
   // the title tune is composed for the selected character's starting runes
-  charSong() { const mix = {}; for (const id of CHARS[this.charIdx].start) { const e = RUNES[id].elem; mix[e] = (mix[e] || 0) + 1; } G.audio.setMix(mix, { now: true }); G.audio.newSong(); this.mB = 4; this.mU = 4; }
+  charSong() { const mix = {}; for (const id of CHARS[this.charIdx].start) { const e = RUNES[id].elem; mix[e] = (mix[e] || 0) + 1; } G.audio.setMix(mix, { now: true }); G.audio.newSong(); this.playing = null; this.mb = 0; this.mB = 4; this.mU = 4; }
   go(view) { this.view = view; this.sel = 0; this.confirm = false; this.build(); }
   update(t, dms) {
     if (G.hidden) return;
@@ -99,6 +99,7 @@ export class MenuScene extends Phaser.Scene {
       g.fillStyle(sel ? 0xffffff : C.line, 1); g.fillRect(-half, -half, half * 2, half * 2); g.fillStyle(sel ? C.panel2 : C.panel, 1); g.fillRect(-half + 2, -half + 2, half * 2 - 4, half * 2 - 4);
       const ic = img(this, c, 0, big ? -4 : -6, it.icon, big ? 2 : it.scale || 3, it.tint); if (it.dim) ic.setAlpha(0.35);
       if (it.lock) img(this, c, half - 10, -half + 10, 'i_lock', big ? 1 : 1.5, 0x9a94b8);
+      if (it.icon2) { const i2 = img(this, c, half - 9, -half + 9, it.icon2, 1); if (it.dim) i2.setAlpha(0.35); }   // a hybrid shows both classes
       txt(this, c, 0, big ? 14 : 18, it.sub || '', big ? 8 : 9, it.subColor || C.dim);
       tap(this, c, half * 2, half * 2, () => { this.sel = i; this.confirm = false; G.audio.sfx('ui'); this.build(); });
     });
@@ -134,7 +135,7 @@ export class MenuScene extends Phaser.Scene {
       // the crate: every style the band can play. Found ones can be put on as the menu music.
       const all = typeof location !== 'undefined' && /soundcheck=1/.test(location.search), has = id => all || (save.styles || []).includes(id);
       const iconOf = g => 'rune_' + (RUNE_IDS.find(id => RUNES[id].elem === GENRES[g].elem) || RUNE_IDS[0]);
-      const items = ALL_STYLES.map(s => ({ icon: iconOf(s.b && this.playing === s.id ? s.b : s.a), dim: !has(s.id), sub: this.playing === s.id ? 'ON' : has(s.id) ? '' : '?', subColor: this.playing === s.id ? C.green : C.gold }));
+      const items = ALL_STYLES.map(s => ({ icon: iconOf(s.a), icon2: s.b ? iconOf(s.b) : null, dim: !has(s.id), sub: this.playing === s.id ? 'ON' : has(s.id) ? '' : '?', subColor: this.playing === s.id ? C.green : C.gold }));
       return this.grid(`STYLES  ${ALL_STYLES.filter(s => (save.styles || []).includes(s.id)).length}/${ALL_STYLES.length}`, items, (it, i) => {
         const s = ALL_STYLES[i], got = has(s.id), on = this.playing === s.id;
         const d = { name: got ? s.name : '???', color: got && s.b ? C.gold : C.text, desc: `${s.recipe}\n${s.b ? GENRES[s.a].name + ' x ' + GENRES[s.b].name : 'A single class on the decks'}${on ? '\nNOW PLAYING: ' + G.audio.info() + '  ' + this.mB + '/' + this.mU : ''}` };

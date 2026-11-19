@@ -1,6 +1,6 @@
 // blend.js, mixer.js and audio.js: the allocator's rules, the DJ's transitions, and the whole engine driven
 // step by step on the fake AudioContext (budgets, clean scheduling, the hold loop).
-import { FakeAudioContext, lintSources, lintEnvelopes, lintSchedule, lintGraph, maxInWindow, liveAt } from '../fakectx.mjs';
+import { FakeAudioContext, lintSources, lintEnvelopes, lintSchedule, lintGraph, maxInWindow, liveAt, valueAt } from '../fakectx.mjs';
 import { Song, genreMix } from '../../src/music.js';
 import { GENRES } from '../../src/genres/index.js';
 import { seats, allocate, layersOf, renderBar, HYBRIDS, ALL_STYLES, mixForStyle } from '../../src/blend.js';
@@ -139,4 +139,70 @@ export default async function (t) {
     t.eq(au.scene.idx, idx, 'the bar does not advance while held'); t.ok(ctx.count.total > before + 100, 'the booth loop keeps playing'); t.eq(au.mixer.bars, 5, 'the mixer is frozen');
     au.hold(false); t.eq(au.held, 0, 'released'); au.step({ beat: 0, beats: 4, unit: 4, dur: 0.42 }); t.ok(au.scene.idx !== idx, 'the next downbeat moves on'); }
   t.ok(DROP_HOLD === true || DROP_HOLD === false, 'DROP_HOLD is a switch');
+
+  // Each of these was a defect a reviewer measured in the first version of the engine. They stay fixed.
+  t.section('review regressions: drop timing, fast wheels, intro, frozen clock, silent menus, the muffle, echoes, the build roll');
+  const mk = (weights, o = {}) => {
+    const ctx = new FakeAudioContext(), au = new Audio({ music: true, sfx: true, rand: seeded(o.seed || 5) });
+    au.init(ctx); ctx.markPersistent(); au.setMix(weights, { first: Object.keys(weights)[0] }); au.newSong(o.seed || 5, { intro: !!o.intro });
+    const log = [], note = au.syn.note.bind(au.syn), drum = au.syn.drum.bind(au.syn);
+    au.syn.note = (route, ev, at, ...x) => { log.push({ k: 'note', part: route.out === au.fxg ? 'fx' : '', n: ev.n, t: at, now: ctx.currentTime }); return note(route, ev, at, ...x); };
+    au.syn.drum = (out, kit, name, at, v) => { log.push({ k: 'drum', kit, n: name, t: at, now: ctx.currentTime, fx: out === au.fxg }); return drum(out, kit, name, at, v); };
+    return { ctx, au, log };
+  };
+  if (DROP_HOLD) {   // in a DROP every event lands inside the half beat its step covers, and the bass never doubles
+    let out = 0, n = 0;
+    for (const s of ALL_STYLES) for (const [beats, unit] of METERS) {
+      const { ctx, au, log } = mk(mixForStyle(s.id), { seed: 9 }), dur = (unit === 8 ? 0.21 : 0.42) / 2; let now = 1;
+      for (let i = 0; i < beats * 4; i++) { ctx.currentTime = now; const k = log.length; au.step({ beat: i % beats, beats, unit, dur, drop: true, slot: i % beats }); for (const e of log.slice(k)) { n++; if (e.t < now + 0.03 - 1e-9 || e.t >= now + 0.03 + dur - 1e-9) out++; } now += dur; }
+    }
+    t.eq(out, 0, `DROP: no event of ${n} is scheduled outside its own half beat`);
+    const { ctx, au, log } = mk({ void: 5 }, { seed: 9 }); let now = 1;   // 6/8: the floor is the group heads, not every eighth
+    for (let i = 0; i < 12; i++) { ctx.currentTime = now; au.step({ beat: i % 6, beats: 6, unit: 8, dur: 0.105, drop: true, slot: i % 6 }); now += 0.105; }
+    const acc = au.scene.frame.accents, kicks = log.filter(e => e.k === 'drum' && e.n === 'kick').length;
+    t.ok(kicks <= acc.length + 3, `DROP in 6/8: ${kicks} kicks in the bar (group heads ${acc.length}), not one per eighth`);
+  }
+  { const M = new Mixer(); M.cue(genreMix({ fire: 5, void: 3 }), {}); M.reset(null, {}); let cuts = 0, crashes = 0;   // a steady band on a very fast wheel is not a cut every bar
+    for (let i = 0; i < 24; i++) { const sc = M.bar({ beat: 0, beats: 6, unit: 8, dur: 0.1 }); if (sc.state === 'cut') cuts++; if (sc.fx.crash) crashes++; t.ok(sc.tier === 0, 'tier 0'); }
+    t.ok(cuts <= 1 && crashes <= 1, `tier 0, steady mix: ${cuts} cuts and ${crashes} crashes in 24 bars`); }
+  for (const at of [0, 1]) { const M = new Mixer(); M.cue(genreMix({ volt: 5 }), {}); M.reset(null, { intro: true }); let sc;   // a DROP in the intro has the tune
+    for (let i = 0; i <= at; i++) sc = M.bar({ beat: 0, beats: 4, unit: 4, dur: i === at ? 0.21 : 0.42, drop: i === at });
+    t.ok(sc.drop && sc.layers.some(l => l.part === 'lead') && sc.layers.some(l => l.part === 'comp'), `DROP on bar ${at} of a stage plays the full band`); }
+  { const M = new Mixer(); M.cue(genreMix({ frost: 5 }), {}); M.reset(null, { intro: true }); M.bar({ beat: 0, beats: 4, unit: 4, dur: 0.42 }); const sc = M.bar({ beat: 0, beats: 4, unit: 4, dur: 0.42 });
+    t.ok(sc.intro === 1 && sc.enterBar === 1 && sc.entering && sc.entering.length, 'intro bar 2: the chords are filtered in'); }
+  { const { ctx, au, log } = mk({ fire: 5 }); ctx.state = 'suspended'; ctx.currentTime = 2;   // a frozen clock schedules nothing
+    for (let i = 0; i < 40; i++) au.step({ beat: i % 4, beats: 4, unit: 4, dur: 0.42 });
+    au.hold(true, 'pause'); for (let i = 0; i < 200; i++) au.idle(1 / 60); au.grace(); au.outro();
+    t.eq(log.length, 0, 'a context that is not running: nothing is scheduled'); t.eq(ctx.oscStarts.length + ctx.bufStarts.length, 0, 'and no source is started');
+    ctx.state = 'running'; au.hold(false); au.step({ beat: 0, beats: 4, unit: 4, dur: 0.42 }); t.ok(log.length > 0, 'it plays again once the context runs'); }
+  { const { ctx, au, log } = mk({ fire: 5 }); let now = 1;   // a menu opened before the new song's first step loops the last bar (metal: no swing)
+    for (let i = 0; i < 8; i++) { ctx.currentTime = now; au.step({ beat: i % 4, beats: 4, unit: 4, dur: 0.42 }); now += 0.42; }
+    au.newSong(77, { intro: true }); const k = log.length; au.hold(true, 'tut');
+    for (let i = 0; i < 300; i++) { now += 1 / 60; ctx.currentTime = now; au.idle(1 / 60); }
+    t.ok(log.length > k + 20, `overlay before the first bar of a new song: the booth loop plays (${log.length - k} events in 5 s)`);
+    const bt = log.slice(k).map(e => e.t), grid = bt.map(x => ((x - bt[0]) / 0.105) % 1).filter(x => x > 1e-6 && x < 1 - 1e-6);
+    t.eq(grid.length, 0, 'the booth loop is on the audio clock: every event sits on the sixteenth grid of one steady pulse'); }
+  for (const frames of [0, 1, 2, 5]) { const { ctx, au } = mk({ fire: 5 }); let now = 1;   // the muffle always wins
+    for (let i = 0; i < 5; i++) { ctx.currentTime = now; au.step({ beat: i % 4, beats: 4, unit: 4, dur: 0.42 }); now += 0.42; }
+    ctx.currentTime = now - 0.42 + frames / 60; au.hold(true, 'pause');
+    t.near(valueAt(au.mlp.frequency, ctx.currentTime + 3), 650, 5, `overlay ${frames} frame(s) after a downbeat: the master filter is closed 3 s later`); }
+  { let phantom = 0, leaving = 0;   // only what was playing is echoed out
+    const EL = Object.values(GENRES).map(g => g.elem);
+    for (let s = 0; s < 60; s++) { const M = new Mixer(), R = seeded(s + 11); let prev = null; M.cue(genreMix({ [EL[s % 8]]: 5 }), {}); M.reset(null, {});
+      for (let i = 0; i < 40; i++) { if (i % 5 === 4) { const w = {}; w[EL[(R() * 8) | 0]] = 2 + R() * 4; w[EL[(R() * 8) | 0]] = 1 + R() * 3; w[EL[(R() * 8) | 0]] = 0.5 + R() * 2; M.cue(genreMix(w), {}); }
+        const sc = M.bar({ beat: 0, beats: 4, unit: 4, dur: 0.42, sig: { prog: 0.02 * (s % 20), kills: i } });
+        for (const l of sc.leave) { leaving++; if (prev && !prev.includes(l.g + ':' + l.part)) phantom++; }
+        prev = sc.layers.map(l => l.g + ':' + l.part); } }
+    t.ok(leaving > 20, 'the simulation echoes layers out'); t.eq(phantom, 0, `no layer is echoed out that was not on air the bar before (${leaving} leaving layers)`); }
+  { const M = new Mixer(); M.cue(genreMix({ frost: 5 }), {}); M.reset(null, {}); let built = null;   // the build bar rolls on the incoming kit
+    for (let i = 0; i < 30 && !built; i++) { if (i === 4) M.cue(genreMix({ fire: 6, frost: 2 }), {}); const sc = M.bar({ beat: 0, beats: 4, unit: 4, dur: 0.42 }); if (sc.state === 'build' && sc.roll) built = sc; }
+    t.ok(built && built.rollKit === GENRES.metal.drumKit, 'DRUMS > METAL: the roll is played on the metal kit'); }
+  { const { ctx, au, log } = mk({ fire: 5 }); let now = 1;   // stage clear: the home chord is not on the muffled bus and the loop waits for it
+    for (let i = 0; i < 8; i++) { ctx.currentTime = now; au.step({ beat: i % 4, beats: 4, unit: 4, dur: 0.42 }); now += 0.42; }
+    ctx.currentTime = now; const k = log.length; au.outro(); t.ok(log.length - k === 3 && log.slice(k).every(e => e.part === 'fx' || e.fx), 'the outro plays on the effects bus');
+    au.hold(true, 'relic'); const k2 = log.length, t0 = now; for (let i = 0; i < 110; i++) { now += 1 / 60; ctx.currentTime = now; au.idle(1 / 60); }
+    t.eq(log.slice(k2).filter(e => e.t < t0 + 2).length, 0, 'the booth loop is silent under the home chord'); }
+  { const au = new Audio({ music: false, sfx: true, rand: seeded(5) }), ctx = new FakeAudioContext(); au.init(ctx); ctx.markPersistent();   // muted: the DJ still keeps the books
+    for (let i = 0; i < 40; i++) au.step({ beat: i % 4, beats: 4, unit: 4, dur: 0.42 });
+    t.eq(au.mixer.bars, 10, 'music off: the mixer still counts bars'); t.eq(ctx.oscStarts.length + ctx.bufStarts.length, 0, 'music off: nothing sounds'); }
 }

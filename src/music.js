@@ -12,7 +12,7 @@
 // Everything inside chord (root, tones, pcs, scale, sev) is in semitones relative to frame.tonic.
 
 import { GENRES } from './genres/index.js';
-import { composeTheme, themeBar, dialect, runeLine } from './theme.js';
+import { composeTheme, themeBar, dialect, runeLine, climbsByThird } from './theme.js';
 
 export { GENRES };
 
@@ -30,6 +30,7 @@ export const MODES = {
 export const MODE_LABEL = { major: 'major', dorian: 'dorian', aeolian: 'minor', phrygian: 'phrygian', mixolydian: 'mixolydian', harmonic: 'harmonic minor' };
 export const NOTE = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 // Progressions as scale degrees (0 = tonic). 'V' = the major dominant of a minor key (it raises the seventh).
+// Every bar of a song as composed is a major or a minor triad (see mkChord).
 export const PROGS = {
   aeolian: [[0, 5, 6, 0], [0, 6, 5, 'V'], [0, 3, 6, 2], [0, 3, 'V', 0], [5, 6, 0, 0], [0, 2, 6, 'V']],
   harmonic: [[0, 3, 'V', 0], [0, 3, 6, 2], [0, 5, 3, 'V'], [0, 'V', 5, 'V']],
@@ -48,6 +49,11 @@ const BOSS_MODE = { major: 'aeolian', mixolydian: 'dorian', dorian: 'aeolian', a
 // Decorative lead notes of a pentatonic dialect stay on these scale degrees
 const PENTA = { major: [0, 1, 2, 4, 5], mixolydian: [0, 1, 2, 4, 5], dorian: [0, 2, 3, 4, 6], aeolian: [0, 2, 3, 4, 6], phrygian: [0, 2, 3, 4, 6], harmonic: [0, 2, 3, 4, 6] };
 
+// The lead device of the dialects that have no ornament of their own (theme.js: dialect, `dev`). The
+// packs' dialect table has no column for it, so it is named here; a pack that sets dialect.dev itself wins.
+const LEAD_DEV = { jazz: 'above', latin: 'clave', metal: 'chug', funk: 'stab' };
+// how a pack plays the tune: its dialect numbers plus its device
+export const leadDialect = pack => { const P = pack.dialect, dev = P.dev || LEAD_DEV[pack.id]; return dev && dev !== P.dev ? { ...P, dev } : P; };
 // Each spell class has a genre. The runes on your wheel decide the band (see src/blend.js).
 export const ELEM_GENRE = { arcane: 'baroque', fire: 'metal', frost: 'jazz', volt: 'funk', void: 'synthwave', nature: 'celtic', steel: 'chiprock', mod: 'latin' };
 // { fire: 5, frost: 2 } -> [['metal', 5], ['jazz', 2]] sorted by weight
@@ -87,11 +93,15 @@ const CLAVES = {
 const freeze = Object.freeze;
 const deep = o => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { freeze(o); for (const k in o) deep(o[k]); } return o; };
 // the tables above are shared by every Song and handed out inside frozen frames: freeze them once, here
-for (const tbl of [MODES, MODE_LABEL, NOTE, PROGS, DOMINANT, PREDOM, OFFTONIC, BOSS_MODE, PENTA, ELEM_GENRE, KIT, CLAVES]) deep(tbl);
+for (const tbl of [MODES, MODE_LABEL, NOTE, PROGS, DOMINANT, PREDOM, OFFTONIC, BOSS_MODE, PENTA, LEAD_DEV, ELEM_GENRE, KIT, CLAVES]) deep(tbl);
 
+// One bar's chord and scale. 'V' is the major dominant: the bar raises the seventh, and (the boss's phrygian)
+// keeps a natural second, so the chord has a perfect fifth. In harmonic minor III and VII come from the natural
+// form, as they do in any minor key: i iv VII III is a circle of fifths, not a diminished and an augmented bar.
 function mkChord(deg, mode) {
   let sc = MODES[mode], d = deg;
-  if (deg === 'V') { d = 4; if (sc[6] !== 11) { sc = sc.slice(); sc[6] = 11; } }
+  if (deg === 'V') { d = 4; if (sc[6] !== 11 || sc[1] === 1) { sc = sc.slice(); sc[6] = 11; if (sc[1] === 1) sc[1] = 2; } }
+  else if (mode === 'harmonic' && (deg === 2 || deg === 6)) sc = MODES.aeolian;
   const at = k => sc[k % 7] + 12 * Math.floor(k / 7), tones = [at(d), at(d + 2), at(d + 4)];
   return deep({ deg, di: d, root: tones[0] % 12, tones, pcs: tones.map(x => x % 12), scale: sc, sev: at(d + 6) % 12 });
 }
@@ -112,20 +122,26 @@ export class Song {
     this.progA = progs[Math.floor(R() * progs.length)];
     const off = OFFTONIC[m].filter(d => d !== dom), o1 = pickR(R, off), o2 = pickR(R, off.filter(d => d !== o1).length ? off.filter(d => d !== o1) : off);
     const pre = PREDOM[m].filter(d => d !== o2), pd = pickR(R, pre.length ? pre : PREDOM[m]);
+    // the tune: ladder ranks over the lead register, which starts at the first scale note >= 67
+    const sc = MODES[m]; let base = 0; while (this.tonic + 12 * Math.floor(base / 7) + sc[base % 7] < 67) base++;
+    // The bridge climbs to the tune's highest note on the downbeat of bar 10, and the tune reaches it from a
+    // chord tone of bar 9. The same chords are laid out so that the third under the peak is such a tone where
+    // the pools allow it: the two off-tonic bars change places, or the other predominant is taken.
+    let br = [o1, o2, pd];
+    const lays = [br, [o2, o1, pd]]; for (const p of PREDOM[m]) if (p !== pd) lays.push([o1, o2, p], [o2, o1, p]);
+    for (const l of lays) if (l[1] !== l[2] && l[0] !== dom && climbsByThird(base, l[1], l[2])) { br = l; break; }
     const A = this.progA;
     this.plan = freeze([
       A[0], A[1], A[2], dom,        // A1: ends open, on the dominant
       A[0], A[1], dom, 0,           // A2: dominant, then home (the tune lands on the root)
-      o1, o2, pd, dom,              // B: off the tonic, predominant, dominant
+      br[0], br[1], br[2], dom,     // B: off the tonic, predominant, dominant
       A[0], A[1], dom, 0,           // A3 = A2
     ]);
     this.variant = null;
     this._chords = { '': this.plan.map(d => mkChord(d, m)), boss: this.plan.map(d => mkChord(d, BOSS_MODE[m])) };
     this._voic = {}; this._claves = new Map(); this._meters = new Map();
     this._frames = new Map(); this.cache = new Map(); this.writes = 0;
-    // ----- the tune: ladder ranks over the lead register, which starts at the first scale note >= 67
-    const sc = MODES[m]; let base = 0; while (this.tonic + 12 * Math.floor(base / 7) + sc[base % 7] < 67) base++;
-    this.theme = composeTheme(rng((this.seed ^ 0x9E3779B9) >>> 0), { deg: this.plan.map(d => (d === 'V' ? 4 : d)), base });
+    this.theme = composeTheme(rng((this.seed ^ 0x9E3779B9) >>> 0), { deg: this.plan.map(d => (d === 'V' ? 4 : d)), base, sc: this._chords[''].map(c => c.scale) });
   }
   get activeMode() { return this.variant === 'boss' ? BOSS_MODE[this.mode] : this.mode; }
   get keyLabel() { return NOTE[this.keyPc] + ' ' + MODE_LABEL[this.activeMode]; }
@@ -222,7 +238,7 @@ export class Song {
   // The engine fills the patch (`i`) from pack.inst where the pack left it out, and freezes the result.
   render(idx, beats, unit, pack, part) {
     const f = this.frame(idx, beats, unit); let ev, inst;
-    if (part === 'lead') { ev = dialect(f.theme, pack.dialect, f); inst = pack.inst.lead[0]; }
+    if (part === 'lead') { ev = dialect(f.theme, leadDialect(pack), f); inst = pack.inst.lead[0]; }
     else { if (typeof pack[part] !== 'function') throw new Error('unknown part ' + part); ev = pack[part](this.context(f, pack.id, part)); inst = pack.inst[part]; }
     for (const list of ev) { for (const e of list) { if (typeof e.n === 'number' && !e.i && inst) e.i = inst; deep(e); } freeze(list); }
     return freeze(ev);

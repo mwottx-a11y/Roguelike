@@ -35,7 +35,7 @@ async function boot() {
   });
   G.game = game; G.AudioClass = Audio; G.Song = Song; window.HEX = G; // debug/test handle
   let rt = 0;
-  const onResize = () => { clearTimeout(rt); rt = setTimeout(() => { G.world.resize(); game.scale.setZoom(1 / dpr()); game.scale.resize(Math.round(window.innerWidth * dpr()), Math.round(window.innerHeight * dpr())); }, 60); };
+  const onResize = () => { clearTimeout(rt); rt = setTimeout(() => { G.world.resize(); game.scale.setZoom(1 / dpr()); game.scale.resize(Math.round(window.innerWidth * dpr()), Math.round(window.innerHeight * dpr())); const st = game.canvas.style; st.width = window.innerWidth + 'px'; st.height = window.innerHeight + 'px'; }, 60); };   // at dpr 1 Phaser leaves the old CSS size
   window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
   const unlock = () => G.audio.unlock();
   window.addEventListener('pointerdown', unlock); window.addEventListener('keydown', unlock); window.addEventListener('touchend', unlock);

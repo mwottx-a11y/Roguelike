@@ -13,7 +13,7 @@ export class RunScene extends Phaser.Scene {
   create() {
     G.world.reset();
     this.run = new Run({ char: save.char, volume: save.volume, metaLevels: save.meta, unlocked: save.runes, fx: G.world.fx, audio: G.audio, skin: save.skin });
-    this.ov = null; this.ovKind = null; this.paused = false; this.joy = null; this.deadT = 0; this.banked = null; this.swapSel = -1; this.toastQ = []; this.toastT = 0; this.setlist = []; this.styleFlash = null; this._quit = false; this._sfxed = false; this.root = null; this.ovRoot = null;
+    this.ov = null; this.ovKind = null; this.paused = false; this.joy = null; this.deadT = 0; this.banked = null; this.swapSel = -1; this.toastQ = []; this.toastT = 0; this.setlist = []; this.styleFlash = null; this._dk = null; this._dkT = 0; this._quit = false; this._sfxed = false; this.root = null; this.ovRoot = null;
     this.keys = this.input.keyboard ? this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SPACE,SHIFT,E,ESC,P') : null;
     this.jg = this.add.graphics().setDepth(5);
     this.buildHud();
@@ -22,7 +22,7 @@ export class RunScene extends Phaser.Scene {
     const up = p => { if (this.joy && this.joy.id === p.id) this.joy = null; };
     this.input.on('pointerup', up); this.input.on('pointerupoutside', up);
     this.scale.on('resize', this.relayout, this);
-    this.events.once('shutdown', () => this.scale.off('resize', this.relayout, this));
+    this.events.once('shutdown', () => { this.scale.off('resize', this.relayout, this); G.audio.hold(false); });
     if (!save.seenTutorial) this.openTutorial();
   }
   relayout() { const k = this.ovKind, d = this.ovData; this.joy = null; this.buildHud(); if (k) this.openOverlay(k, d); }
@@ -48,8 +48,8 @@ export class RunScene extends Phaser.Scene {
     // wheel strip
     const by = m.UH - m.bot;
     h.wheelY = by - 32; h.wheel = this.wheelRow(r, m.cx, h.wheelY, 32, null);
-    h.meter = txt(this, r, L, by - 66, '', 18, C.cyan, 0, 0.5);
-    h.meterSub = txt(this, r, L, by - 51, '', 8, C.dim, 0, 0.5);
+    h.meter = txt(this, r, L, by - 88, '', 18, C.cyan, 0, 0.5);        // above the wheel strip: a long style name must not run under it
+    h.meterSub = txt(this, r, L, by - 73, '', 8, C.dim, 0, 0.5);
     // action buttons
     const bx = R - 40, mk = (y, label, key, cb) => {
       const c = this.add.container(bx, y), g = this.add.graphics(); c.add(g); r.add(c);
@@ -133,12 +133,17 @@ export class RunScene extends Phaser.Scene {
     h.meterSub.setText(fl ? fl.text : next ? 'NEXT: ' + dk.pending.toUpperCase() : st.name.toUpperCase()).setColor(fl || next || st.id.includes('+') ? C.gold : C.dim);
   }
   styleName(id) { const s = ALL_STYLES.find(q => q.id === id); return s ? s.name : id; }
-  // what a draft option would do to the band, if it would change the style: { name, isNew }
+  // What a draft option would do to the band, if it would change the style: { name, isNew }. Compared with where
+  // the wheel is already heading (not with what is on air), and on a full wheel checked for every slot the new
+  // rune could replace: the card only names a style when every slot gives that one.
   mixStyle(opt) {
-    const mx = this.run.mixIf(opt); if (!mx) return null;
-    const cur = G.audio.mixer.air, T = allocate(seats(genreMix(mx.w), cur), cur, { first: ELEM_GENRE[mx.first] });
-    if (T.style.name === cur.style.name) return null;
-    return { name: T.style.name, isNew: !save.styles.includes(T.style.id) };
+    const run = this.run, air = G.audio.mixer.air, sty = mx => allocate(seats(genreMix(mx.w), air), air, { first: ELEM_GENRE[mx.first] }).style;
+    const now = sty(run.mixOf(run.wheel)).name;
+    const slots = run.needsSlot(opt) ? [...Array(run.size).keys()] : [undefined];
+    const out = slots.map(s => run.mixIf(opt, s)).filter(Boolean).map(sty).filter(s => s.name !== now);
+    if (!out.length) return null;
+    if (out.length < slots.length || out.some(s => s.name !== out[0].name)) return { name: 'varies by slot', isNew: false };
+    return { name: out[0].name, isNew: !save.styles.includes(out[0].id) };
   }
   wheelSig() { const r = this.run; let s = ''; for (let i = 0; i < r.size; i++) { const q = r.wheel[i]; s += q ? q.id + q.lvl + r.res[i] : '-'; } return s; }
 
@@ -165,7 +170,7 @@ export class RunScene extends Phaser.Scene {
     if (this.ov) G.audio.idle(dt);
     if (!this.ov) {
       if (W.hitstopT > 0) W.hitstopT -= dt; else run.update(dt);
-      if (run.pending.length && (run.state === 'play' || run.state === 'clear')) this.openOverlay(run.pending.shift());
+      if (run.pending.length && (run.state === 'play' || (run.state === 'clear' && run.stage.clearT <= 0.3))) this.openOverlay(run.pending.shift());   // the stage-clear chord gets its two seconds in the open; the relic and the level-ups follow it
       else if (run.state === 'shop') this.openOverlay('shop');
       else if (run.state === 'dead') { this.deadT += dt; if (this.deadT > 1.3) this.openOverlay('over'); }
     }
@@ -187,7 +192,8 @@ export class RunScene extends Phaser.Scene {
     ({ level: this.ovChoice, relic: this.ovChoice, shop: this.ovShop, pause: this.ovPause, over: this.ovOver, tut: this.ovTut })[kind].call(this, o, kind, data);
     if (kind !== 'pause' && kind !== 'tut') { o.setAlpha(0); this.tweens.add({ targets: o, alpha: 1, duration: 140 }); }
   }
-  closeOverlay() { G.audio.hold(false); if (this.ovRoot) this.ovRoot.destroy(true); this.ovRoot = null; this.ov = null; this.ovKind = null; this.ovData = null; this.root.setAlpha(1); this.hudTick(true);
+  closeOverlay() { const w = G.audio.beatIn(); G.audio.hold(false); if (w != null && this.run && this.run.state === 'play') this.run.stepT = w * this.run.stepRate();   // the wheel picks up on the loop's next beat: the pulse never breaks
+    if (this.ovRoot) this.ovRoot.destroy(true); this.ovRoot = null; this.ov = null; this.ovKind = null; this.ovData = null; this.root.setAlpha(1); this.hudTick(true);
     for (const p of this.input.manager.pointers) if (p.isDown && !this.joy) this.joy = { id: p.id, ox: p.x, oy: p.y, x: p.x, y: p.y }; }
 
   // editable wheel used on choice / shop / pause screens
@@ -225,11 +231,11 @@ export class RunScene extends Phaser.Scene {
     g.fillStyle(col, 0.12); g.fillRect(-w / 2 + 2, -h / 2 + 2, 56, h - 4);
     const ic = img(this, c, -w / 2 + 30, 0, icon, icon.startsWith('rune_') ? 3 : 4, tint);
     const sm = h < 70;
-    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 2 : 8), tag, 9, hexs(col), 0, 0);
-    txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 12 : 20), name, sm ? 14 : 16, C.text, 0, 0);
+    const tagT = txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 2 : 8), tag, 9, hexs(col), 0, 0);
+    const nameT = txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 12 : 20), name, sm ? 14 : 16, C.text, 0, 0);
     txt(this, c, -w / 2 + 66, -h / 2 + (sm ? 29 : 41), desc, sm ? 8 : 10, C.dim, 0, 0, { wrap: w - 76 - (price ? 46 : 0), ls: 0 });
     if (price) c.price = txt(this, c, w / 2 - 10, 0, String(price), 16, C.gold, 1, 0.5, { bold: true });
-    if (opt && (opt.kind === 'rune' || opt.kind === 'up' || opt.kind === 'fuse')) { const sy = this.mixStyle(opt); if (sy) txt(this, c, w / 2 - 8, -h / 2 + (sm ? 2 : 8), 'MIX > ' + sy.name.toUpperCase() + (sy.isNew ? '   NEW' : ''), 8, sy.isNew ? C.gold : C.cyan, 1, 0); }
+    if (opt && (opt.kind === 'rune' || opt.kind === 'up' || opt.kind === 'fuse')) { const sy = this.mixStyle(opt); if (sy) txt(this, c, w / 2 - 8 - (price ? 46 : 0), -h / 2 + (sm ? 2 : 8), 'MIX > ' + sy.name.toUpperCase() + (sy.isNew ? '   NEW' : ''), 8, sy.isNew ? C.gold : C.cyan, 1, 0, { wrap: Math.max(60, w - 80 - (price ? 46 : 0) - Math.max(tagT.width, nameT.width)) }); }   // wrapped into the column right of the tag and the name
     c.ic = ic; c.gfx = g;
     tap(this, c, w, h, () => cb(opt, c));
     return c;

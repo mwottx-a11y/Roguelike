@@ -70,10 +70,13 @@ Slots come from the Extra Slot tome, the Bigger Wheel upgrade, and the character
 - `src/music.js` composes it from a seed: key, mode, a 16-bar AABA chord plan with open and closed
   cadences, one clave, and (`src/theme.js`) one tune with a real hook: two short figures stated,
   restated and answered, a held note and a breath at the end of each phrase, and a single highest note
-  that arrives once, in the bridge. The tune is the same in every meter and every genre.
+  that arrives once, in the bridge, climbed into and held. The tune is the same in every meter and
+  every genre: 6/8 keeps the hook's long-against-short rhythm by splitting a pulse, 3/4 gets a pickup.
 - `src/genres/` holds one pack per genre. A pack writes five stems for any bar (kit, hats and
   percussion, bass, chords, a colour layer) and names a dialect for playing the tune (running eighths
-  for baroque, long gliding notes for synthwave, clipped stabs for funk, and so on).
+  for baroque, long gliding notes for synthwave, clipped stabs for funk, and so on). Four dialects also
+  have a device of their own (`LEAD_DEV` in `music.js`): latin locks to the clave, jazz lays back and
+  falls off held notes, metal re-strikes them on the pulse, funk doubles a held first note.
 - `src/blend.js` decides who plays what. Each class on the wheel is a deck; its share of the wheel times
   how much each stem matters to its genre is its bid. One kit and one bass, ever; hats and chords are
   layered at equal power; the tune is traded phrase by phrase; the smallest class adds its colour.
@@ -83,19 +86,23 @@ Slots come from the Extra Slot tome, the Bigger Wheel upgrade, and the character
   drummer or bassist waits for the next phrase, with a build bar and a crash on the landing; a new
   meter, a boss or a DROP is a hard cut. Energy follows the stage and your kill rate, the bridge thins
   out and the last A is the full band. During a DROP the band holds its tempo and the wheel plays
-  double time over it (`DROP_HOLD` in `mixer.js` switches back to the old doubling).
+  double time over it (`DROP_HOLD` in `mixer.js` switches back to the old doubling); the floor is a
+  kick on every beat in /4 and on the group heads in /8.
 - `src/synth.js` makes the sound and `src/audio.js` runs the desk and the clock. The music keeps
-  looping, muffled, behind every menu instead of stopping.
+  looping, muffled and on the beat, behind every menu instead of stopping; the stage-clear chord rings
+  in the open before the relic appears.
 
 **Your spells pick the band.** Arcane = baroque, Fire = metal, Frost = jazz, Volt = funk,
 Void = synthwave, Nature = celtic, Steel = chip rock, modifiers = latin. Runes are weighted by level;
-a fused rune counts for the classes of both parents. The style on air is shown under the meter, draft
-cards say `MIX > ...` when a pick would change it, and every style you play for 8 bars joins the
+a fused rune counts for the classes of both parents. The style on air is shown above the wheel, draft
+cards say `MIX > ...` when a pick would change it (`VARIES BY SLOT` when a new rune on a full wheel
+gives a different style depending on what it replaces), and every style you play for 8 bars joins the
 collection (menu, RUNES, SHOW STYLES), where found styles can be put on as menu music.
 Adding `?soundcheck=1` to the URL makes every style playable there, in each meter.
 
 `node tools/musictest.mjs` runs the music checks (theory rules, the pack contract, the allocator, the
-mixer simulation, and the whole engine on a fake audio context). `node tools/score.mjs --genre funk
+mixer simulation, the whole engine on a fake audio context, and a regression check for every defect
+found in review). `node tools/score.mjs --genre funk
 --parts kit,bass,lead --meter 4/4 --seed 7` prints the music as a text score.
 
 Progression: Echoes buy 20 permanent upgrade tracks (98 ranks), 9 characters, new runes;

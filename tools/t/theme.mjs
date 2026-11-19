@@ -2,7 +2,7 @@
 // "Grid and legality" (spec section 9), plus harmony plan, clave, boss variant, stem cache and compose cost.
 // Statistical gates are windows over many seeds; everything else must hold for every bar of every song.
 import { performance } from 'node:perf_hooks';
-import { Song, GENRES, MODES, NOTE, MODE_LABEL, PROGS, rng, hashStr, grouping, genreMix, ELEM_GENRE } from '../../src/music.js';
+import { Song, GENRES, MODES, NOTE, MODE_LABEL, PROGS, rng, hashStr, grouping, genreMix, ELEM_GENRE, leadDialect } from '../../src/music.js';
 import { composeTheme, themeBar, dialect, runeLine, classifyNCT } from '../../src/theme.js';
 
 const IDS = Object.keys(GENRES), PARTS = ['kit', 'tops', 'bass', 'comp', 'color', 'lead'];
@@ -15,6 +15,14 @@ const flat = ev => { const out = []; ev.forEach((l, b) => l.forEach(e => out.pus
 const rub = (a, b) => { const x = (((a - b) % 12) + 12) % 12; return x === 1 || x === 11; };
 const tonesOf = e => (e.ns ? e.ns : e.x && e.x.arp ? e.x.arp.map(o => e.n + o) : [e.n]);
 const pct = (a, b) => (b ? Math.round(1000 * a / b) / 10 : 100);
+// an augmented second: three semitones between two neighbouring scale degrees (b6 and the raised 7 of a minor
+// key). fa and fb are the frames the two notes sound in.
+const degOf = (f, n) => f.chord.scale.indexOf(pcOf(f, n));
+const aug2 = (fa, a, fb, b) => Math.abs(a - b) === 3 && [1, 6].includes((((degOf(fa, a) - degOf(fb, b)) % 7) + 7) % 7);
+// the rests of a bar's theme, as [from, to) in beats: two successive notes of a line form one melodic interval
+// when the tune does not rest between their onsets
+const restsOf = (f) => { const out = []; let c = 0; for (const n of f.theme) { const st = n.beat + n.o; if (st - c > 1e-9) out.push([c, st]); c = st + n.d; } if (f.beats - c > 1e-9) out.push([c, f.beats]); return out; };
+const joined = (rests, t0, t1) => !rests.some(r => r[0] < t1 - 1e-9 && r[1] > t0 + 1e-9);
 // a failing case is counted, and only the first few are printed
 function tally(t) {
   const m = new Map();
@@ -70,6 +78,8 @@ export default async function (t) {
         T.no(v.length === 3 && v.every((n, k) => n >= 55 && n <= 78 && isCT(f, n) && (k === 0 || n > v[k - 1])) && new Set(v.map(n => n % 12)).size === 3 && v[2] - v[0] <= 12, 'voicing: the full triad, close position, 55..78', at + ' bar ' + i + ' ' + v);
         T.no(f.bassRoot >= 36 && f.bassRoot <= 47 && pcOf(f, f.bassRoot) === c.root && f.nextBassRoot >= 36 && f.nextBassRoot <= 47 && pcOf(f, f.nextBassRoot) === f.next.root, 'bassRoot and nextBassRoot are roots in 36..47', at + ' bar ' + i);
         T.no(f.next === s.frame(i + 1, 4, 4).chord, 'frame.next is the next bar\'s chord', at);
+        // no bar rests on an augmented triad or a flat-five dominant; a diminished one only as ii° of the boss's darker mode
+        { const t3 = c.tones[1] - c.tones[0], t5 = c.tones[2] - c.tones[0]; T.no(t5 === 7 && (t3 === 3 || t3 === 4) || (variant === 'boss' && t3 === 3 && t5 === 6 && c.deg === 1), 'every bar is a major or minor triad (the boss variant may add ii°)', at + ' bar ' + i + ' deg ' + c.deg + ' ' + c.tones); }
         if (prev) { for (let k = 0; k < 3; k++) { move += Math.abs(v[k] - prev[k]); moves++; } topMove += Math.abs(v[2] - prev[2]); maxTop = Math.max(maxTop, Math.abs(v[2] - prev[2])); }
         prev = v;
       }
@@ -100,15 +110,27 @@ export default async function (t) {
 
   // ------------------------------------------------------------------ the tune
   t.section(`theme and identity (${SONGS} songs)`);
-  const dstat = {}; for (const id of IDS) dstat[id] = { notes: 0, bars: 0, len: 0, push: 0, heads: 0, orn: 0, six: 0 };
+  const dstat = {}; for (const id of IDS) dstat[id] = { notes: 0, bars: 0, len: 0, push: 0, heads: 0, orn: 0, six: 0, again: 0, fall: 0, cads: 0, twice: 0, held: 0, stab: 0 };
+  const pairEq = {}, pairBars = {};                 // per game meter: bars two dialects play identically (onsets and pitches)
   {
     const T = tally(t);
     let structAll = 0, structSame = 0, barlines = 0, smooth = 0, hookMin = 99, hookSum = 0, bounced = 0, plain = 0, nct = 0, notes = 0, leaps = 0, ivs = 0, lowLead = 0, leadN = 0;
-    const restBy = {}, tunes = [], hooks = new Set(), grams = new Set(), figs = new Set();
+    let climb = 0, climbN = 0, third = 0;
+    const restBy = {}, tunes = [], hooks = new Set(), grams = new Set(), figs = new Set(), blBy = {}, mix = {};
+    // the long/short pattern of a cell: L for every note longer than its shortest
+    const pat = L => { const m = Math.min(...L.map(n => n.d)); return L.map(n => (n.d > m + 1e-9 ? 'L' : 'S')).join(''); };
+    const cell0 = (s, i, b, u) => { const end = u === 4 ? Math.min(2, b) : s.meter(b, u).groups[0]; return s.frame(i, b, u).theme.filter(n => n.beat < end); };
     for (let seed = 1; seed <= SONGS; seed++) {
       const s = mk(seed), th = s.theme; bounced += th.bounced; plain += th.plain; grams.add(th.gram); figs.add(th.x.rh + th.x.shape + th.x.dir + '/' + th.y.rh + th.y.shape + th.y.dir);
       // bar-head pitch is the same in every meter
       for (let i = 0; i < 16; i++) { const h = SEVEN.map(([b, u]) => { const n = s.frame(i, b, u).theme[0]; return n.beat === 0 && n.o === 0 ? n.n : -1; }); T.no(h.every(x => x === h[0] && x > 0), 'bar-head pitch identical in 2/4, 3/4, 4/4, 5/4, 5/8, 6/8, 7/8', `seed ${seed} bar ${i}: ${h}`); }
+      // the hook is the same rhythm in every meter: long against short, never evened out
+      { const p4 = pat(cell0(s, 0, 4, 4)); for (const [b, u] of SEVEN) T.no(pat(cell0(s, 0, b, u)) === p4 && p4.includes('L'), 'the hook keeps its long/short pattern in every meter (2/4, 3/4, 4/4, 5/4, 5/8, 6/8, 7/8)', `seed ${seed} ${b}/${u}: ${pat(cell0(s, 0, b, u))} vs ${p4}`); }
+      // ... and stays different from the answer: a bar that opens with x against one that opens with y
+      { const ix = th.bars.findIndex((B, i) => i < 10 && !B.cad && B.a.rh === th.x.rh), iy = th.bars.findIndex((B, i) => i < 10 && !B.cad && B.a.rh === th.y.rh), rh = (i, b, u) => cell0(s, i, b, u).map(n => (n.beat + n.o) + '/' + n.d).join(' ');
+        for (const [b, u] of GAME) T.no(ix >= 0 && iy >= 0 && rh(ix, b, u) !== rh(iy, b, u), 'hook and answer have different rhythms in every game meter', `seed ${seed} ${b}/${u}: bars ${ix} and ${iy}: ${rh(ix, b, u)}`); }
+      // the pickup is part of the tune: a song that has one has it before every phrase, in every game meter
+      for (const [b, u] of GAME) for (const i of [3, 7, 11, 15]) T.no((s.frame(i, b, u).theme.length > 1) === (th.pickup > 0), 'a song with a pickup has one in all four cadence bars, in 3/4, 4/4, 5/4 and 6/8 alike', `seed ${seed} ${b}/${u} bar ${i} pickup ${th.pickup}`);
       for (let i = 0; i < 16; i++) if (i % 4 !== 3) { const m = [[4, 4, 2], [5, 4, 3], [6, 8, 3]].map(([b, u, at]) => { const n = s.frame(i, b, u).theme.find(x => x.beat === at && x.o === 0); return n && n.s ? n.n : -1; }); T.no(m.every(x => x === m[0] && x > 0), 'the second group head carries the same pitch in 4/4, 5/4 and 6/8', `seed ${seed} bar ${i}: ${m}`); }
       for (const [b, u] of ALL) {
         const key = b + '/' + u, game = GAME.some(m => m[0] === b && m[1] === u), seven = SEVEN.some(m => m[0] === b && m[1] === u), ppb = u === 4 ? 2 : 1;
@@ -122,12 +144,19 @@ export default async function (t) {
             const nx = th0[k + 1], st = n.beat + n.o, contiguous = nx ? Math.abs(nx.beat + nx.o - st - n.d) < 1e-9 : Math.abs(st + n.d - b) < 1e-9;
             const next = contiguous ? (nx ? nx.n : nf.theme[0].n) : null, prev = k ? th0[k - 1].n : null;
             T.no(inScale(f, n.n), 'theme: every note is in the bar\'s scale', at);
-            T.no(Number.isInteger(st * ppb) && Number.isInteger(n.d * ppb) && st + n.d <= b + 1e-9 && (!nx || st + n.d <= nx.beat + nx.o + 1e-9), 'theme: notes sit on the pulse grid, do not overlap and stay inside the bar', at);
+            // /4: whole pulses (eighths). /8: a pulse may split in two, so that a three-pulse group can hold a long note against two short ones
+            T.no(Number.isInteger(st * ppb * (u === 8 ? 2 : 1)) && Number.isInteger(n.d * ppb * (u === 8 ? 2 : 1)) && (u === 8 ? n.o === 0 || n.o === 0.5 : true) && st + n.d <= b + 1e-9 && (!nx || st + n.d <= nx.beat + nx.o + 1e-9), 'theme: notes sit on the pulse grid (half pulses allowed in /8), do not overlap and stay inside the bar', at);
             const kind = classifyNCT(n.n, prev, next, f, nx ? f : nf);
             if (kind !== 'ct') { nct++; T.no(kind !== 'bad' && n.d <= 1 + 1e-9 && n.d * ppb <= 1 + 1e-9, 'theme: a non-chord tone lasts one pulse and leaves by step', at + ` ${n.n} -> ${next}`); T.no(!n.s, 'theme: structural notes are chord tones', at); }
             if (n.n > top) { top = n.n; topBars = new Set([i]); } else if (n.n === top) topBars.add(i);
             cover += n.d; notes++;
             if (seven && nx && contiguous) { ivs++; if (Math.abs(nx.n - n.n) > 4) leaps++; }
+            if (seven && next != null) {
+              const d = Math.abs(next - n.n), M = (mix[key] = mix[key] || { n: 0, uni: 0, step: 0, third: 0, big: 0, tri: 0, nct: 0, nctLeap: 0 });
+              M.n++; if (!d) M.uni++; else if (d <= 2) M.step++; else if (d <= 4) M.third++; else M.big++; if (d === 6) M.tri++;
+              T.no(d <= 12, 'theme: no leap wider than an octave between successive notes', at + ` ${n.n} -> ${next}`);
+              if (nx && !isCT(f, nx.n)) { M.nct++; if (d > 4) M.nctLeap++; }
+            }
           });
           sounding += cover;
           for (const a of f.accents) { const snd = th0.find(n => n.beat + n.o <= a + 1e-9 && n.beat + n.o + n.d > a + 1e-9); if (snd) T.no(isCT(f, snd.n), 'theme: the tone sounding at a group head is a chord tone', at + ' beat ' + a); const hit = th0.find(n => n.beat === a && n.o === 0); if (hit) T.no(isCT(f, hit.n) && hit.s === 1, 'theme: a note struck on a group head is a structural chord tone', at); }
@@ -137,19 +166,50 @@ export default async function (t) {
             if (i === 7 || i === 15) T.no(pcOf(f, th0[0].n) === 0 && f.chord.root === 0, 'closed cadence: the tune lands on the tonic root', at);
             if (i === 3 || i === 11) T.no(pcOf(f, th0[0].n) !== f.chord.root, 'open cadence: the tune ends on the third or fifth of the dominant', at);
           }
-          if (seven && f.pos !== 3) { barlines++; const last = th0[th0.length - 1]; if (Math.abs(nf.theme[0].n - last.n) <= 4) smooth++; }
+          if (seven && f.pos !== 3) { barlines++; const last = th0[th0.length - 1], B = (blBy[key] = blBy[key] || [0, 0]); B[1]++; if (Math.abs(nf.theme[0].n - last.n) <= 4) { smooth++; B[0]++; } }
           // the rune line: a chord tone 3..9 semitones under the sounding note, one per beat
           T.no(f.rune.length === b && f.rune.every(isCT.bind(null, f)), 'rune line: one chord tone per beat', at);
           for (let k = 0; k < b; k++) { const snd = th0.find(n => n.beat + n.o <= k + 1e-9 && n.beat + n.o + n.d > k + 1e-9) || th0.find(n => n.beat === k); if (snd) T.no(snd.n - f.rune[k] >= 3 && snd.n - f.rune[k] <= 9, 'rune line: 3..9 semitones under the sounding theme note', at + ` beat ${k}`); }
           for (const n of th0) { leadN++; if (n.n <= f.voicing[2]) lowLead++; }
         }
         T.no(topBars.size === 1 && topBars.has(10), 'the highest note occurs in exactly one bar, bar 10', `seed ${seed} ${key}: bars ${[...topBars]}`);
+        if (seven) {
+          // the climax: prepared (bar 9 leads into it), held, struck once, and a third clear of what came before it
+          const at = `seed ${seed} ${key}`, pk = F[10].theme[0], b9 = F[9].theme, last9 = b9[b9.length - 1], up = pk.n - last9.n;
+          T.no(pk.pk === 1 && pk.beat === 0 && pk.o === 0 && pk.n === top && pk.d * ppb >= 2 - 1e-9, 'climax: the peak is the downbeat of bar 10 and lasts two pulses or more', at + ` d=${pk.d}`);
+          T.no(Math.abs(last9.beat + last9.o + last9.d - b) < 1e-9, 'climax: bar 9 runs into the peak without a rest', at);
+          T.no(up >= 3 && up <= 7 && up !== 6, 'climax: the peak is reached by a third, a perfect fourth or a perfect fifth (3..7 semitones, no tritone)', at + ` ${last9.n} -> ${pk.n}`);
+          let ceil = 0, hits = 0; for (const i of [8, 9]) for (const n of F[i].theme) ceil = Math.max(ceil, n.n); for (const f of F) for (const n of f.theme) if (n.n === pk.n) hits++;
+          T.no(pk.n - ceil >= 3, 'climax: the peak clears every note of bars 8 and 9 by three semitones or more', at + ` ceiling ${ceil}, peak ${pk.n}`);
+          T.no(hits === 1, 'climax: the top pitch is struck exactly once in the loop', at + ` ${hits} times`);
+          if (b === 4 && u === 4) { climbN++; if (F[8].theme[0].n < F[9].theme[0].n && F[9].theme[0].n < pk.n) climb++; if (up <= 4) third++; }
+        }
         if (seven) { const r = 1 - sounding / (16 * b); (restBy[key] = restBy[key] || []).push(r); T.no(r >= 0.12 - 1e-9 && r <= 0.35 + 1e-9, 'lead rests 12-35% of the loop', `seed ${seed} ${key}: ${(100 * r).toFixed(1)}%`); }
         if (!game) continue;
         // ---- the eight dialects
+        const sig = {};
         for (const id of IDS) {
           const P = GENRES[id].dialect, D = dstat[id], peakN = F[10].theme[0].n; let dtop = -1, dtopBars = new Set();
           const L = F.map((f, i) => s.stem(i, b, u, id, 'lead'));
+          {
+            // the climax survives every dialect: struck once, a third clear of bars 8 and 9, two pulses to itself
+            const at = `seed ${seed} ${key} ${id}`, E = L.map(flat); let hits = 0, ceil = 0;
+            for (let i = 0; i < 16; i++) for (const e of E[i]) { if (e.n === peakN) hits++; if (i === 8 || i === 9) ceil = Math.max(ceil, e.n, e.on || 0); }
+            T.no(hits === 1, 'dialect: the top pitch is struck exactly once in the loop', at + ` (${hits} times)`);
+            T.no(peakN - ceil >= 3, 'dialect: the peak clears every note and ornament pitch of bars 8 and 9 by three semitones or more', at + ` ceiling ${ceil}, peak ${peakN}`);
+            const p0 = E[10][0], sp = (E[10][1] ? E[10][1].t : b) - p0.t;
+            T.no(p0.n === peakN && p0.t === 0 && sp * ppb >= 2 - 1e-9, 'dialect: the peak is the downbeat of bar 10 and nothing follows it for two pulses', at);
+            for (let i = 0; i < 16; i++) {
+              const th0 = F[i].theme, z = th0[th0.length - 1];
+              if (Math.abs(z.beat + z.o + z.d - b) < 1e-9) T.no(E[i][E[i].length - 1].n === z.n, 'dialect: the note that reaches the barline is the tune\'s own (never dropped, never moved)', at + ' bar ' + i);
+              (sig[id] = sig[id] || []).push(E[i].map(e => e.t + ':' + e.n).join(' '));
+              // device detectors
+              E[i].forEach((e, k) => { const pv = E[i][k - 1]; if (pv && !e.echo && !pv.echo && e.n === pv.n && e.t - pv.t <= 0.5 + 1e-9) D.again++; if (e.echo) T.no(e.p === 2 && pv && pv.n === e.n && !pv.echo && e.t - pv.t >= 1 - 1e-9 && e.n !== peakN, 'chiprock echo: p2, after a note that kept a beat or more, never on the peak', at + ' bar ' + i); });
+              if (F[i].pos === 3 && E[i][0].d !== undefined) { D.cads++; const c = F[i].theme[0], e1 = E[i][1]; let room = false; for (let n = c.n - 1; n >= F[i].lo; n--) if (isCT(F[i], n) && !(F[i].theme.length === 1 ? degOf(F[i], n) >= 5 : aug2(F[i], n, F[i], F[i].theme[1].n))) room = true;   // (never an augmented second from the pickup; with no pickup, never onto the sixth or seventh degree)
+                if (c.d * ppb >= 3 - 1e-9 && room) { D.held++; if (e1 && e1.t < c.d - 1e-9 && e1.n < c.n && isCT(F[i], e1.n)) D.fall++; } }
+              if (F[i].pos !== 3 && i !== 10) { const h = F[i].theme[0], e1 = E[i][1]; if (h.d * ppb >= 2 - 1e-9) { D.twice++; if (e1 && e1.n === h.n && Math.abs(e1.t - 1 / ppb) < 1e-9) D.stab++; } }
+            }
+          }
           for (let i = 0; i < 16; i++) {
             const f = F[i], at = `seed ${seed} ${key} bar ${i} ${id}`, ev = flat(L[i]), nextFirst = flat(L[(i + 1) % 16])[0];
             const sN = f.theme.filter(n => n.s), sD = ev.filter(e => e.s);
@@ -183,6 +243,8 @@ export default async function (t) {
           }
           T.no(dtopBars.size === 1 && dtopBars.has(10), 'dialect: the highest note is still only in bar 10', `seed ${seed} ${key} ${id}: ${[...dtopBars]}`);
         }
+        { const pe = (pairEq[key] = pairEq[key] || {}); pairBars[key] = (pairBars[key] || 0) + 16;
+          for (let x = 0; x < 8; x++) for (let y = x + 1; y < 8; y++) { const k = IDS[x] + '/' + IDS[y]; pe[k] = pe[k] || 0; for (let i = 0; i < 16; i++) if (sig[IDS[x]][i] === sig[IDS[y]][i]) pe[k]++; } }
       }
       // the hook: bars whose first group has bar 0's rhythm and contour
       {
@@ -197,6 +259,17 @@ export default async function (t) {
     T.done();
     t.ok(structSame / structAll >= 0.98, `structural lead pitches identical across all 8 dialects, within a pulse of their place: >= 98% (${pct(structSame, structAll)}%)`);
     t.ok(smooth / barlines >= 0.9, `barline interval at most 4 semitones in >= 90% of non-phrase barlines (${pct(smooth, barlines)}%)`);
+    // ... and in each meter on its own: 2/4, which the game never plays, must not carry the others
+    for (const [b, u] of GAME) { const B = blBy[b + '/' + u]; t.ok(B[0] / B[1] >= 0.9, `barline interval at most 4 semitones in >= 90% of non-phrase barlines in ${b}/${u} alone (${pct(B[0], B[1])}%)`); }
+    t.report('smooth non-phrase barlines % in 2/4, 3/4, 4/4, 5/4, 5/8, 6/8, 7/8', SEVEN.map(([b, u]) => pct(blBy[b + '/' + u][0], blBy[b + '/' + u][1])).join(' / '));
+    t.ok(climb / climbN >= 0.9, `the bridge climbs: bar 8 head < bar 9 head < peak in >= 90% of songs (${pct(climb, climbN)}%)`);
+    t.report('songs whose peak is reached by a third (the rest: a perfect fourth or fifth) %', pct(third, climbN));
+    // the line is sung, not arpeggiated: mostly steps, leaps as the exception (4/4 is the reference reading)
+    { const M = mix['4/4']; t.ok(M.step / M.n >= 0.4 && M.step / M.n <= 0.65 && M.big / M.n >= 0.1 && M.big / M.n <= 0.22, `interval mix in 4/4: steps 40-65% (${pct(M.step, M.n)}%), intervals above a major third 10-22% (${pct(M.big, M.n)}%)`); }
+    for (const [b, u] of SEVEN) { const M = mix[b + '/' + u];
+      t.ok(M.nctLeap === 0, `no non-chord tone is entered by a leap of more than a third (4 semitones) in ${b}/${u} (${M.nctLeap} of ${M.nct})`);
+      t.ok(M.tri === 0, `no tritone leap between successive notes in ${b}/${u} (${M.tri} of ${M.n})`);
+      t.report(`intervals ${b}/${u}: unison / step / third / wider %, tritone leaps`, [pct(M.uni, M.n), pct(M.step, M.n), pct(M.third, M.n), pct(M.big, M.n)].join(' / ') + ', ' + M.tri); }
     t.ok(new Set(tunes).size === SONGS, `every seed gives a different tune (${new Set(tunes).size} distinct of ${SONGS})`);
     // how different: share of 4/4 pulse slots on which two tunes agree about "a note starts here"
     let agree = 0, pairs = 0, mx = 0;
@@ -204,6 +277,18 @@ export default async function (t) {
     for (let a = 0; a < SONGS; a++) for (let b2 = a + 1; b2 < SONGS; b2++) { let eq = 0; for (let k = 0; k < 128; k++) if (grid[a][k] === grid[b2][k]) eq++; agree += eq / 128; pairs++; mx = Math.max(mx, eq / 128); }
     t.ok(agree / pairs <= 0.8, `different seeds have different rhythms: mean onset-grid agreement between two tunes <= 80% (${pct(agree, pairs)}%)`);
     t.ok(hooks.size >= 15 && figs.size >= 60 && grams.size === 4, `variety: ${hooks.size} distinct hook cells (>= 15), ${figs.size} figure pairs (>= 60), ${grams.size} grammars (4) in ${SONGS} songs`);
+    // On 400 songs, per game meter: no stock rhythm (how many songs share one whole 16-bar rhythm), and the
+    // barline window once more on a sample large enough to tell 89.7% from 90%
+    for (const [b, u] of GAME) {
+      const cls = new Map(), ppb = u === 4 ? 2 : 1; let big = 0, sm = 0, bl = 0;
+      for (let seed = 1; seed <= 400; seed++) {
+        const s = mk(seed), F = Array.from({ length: 16 }, (_, i) => s.frame(i, b, u).theme);
+        const k = F.map(th0 => th0.map(n => (n.beat + n.o) * ppb + '+' + n.d * ppb).join(' ')).join('|'), c = (cls.get(k) || 0) + 1; cls.set(k, c); big = Math.max(big, c);
+        for (let i = 0; i < 16; i++) if (i % 4 !== 3) { bl++; if (Math.abs(F[(i + 1) % 16][0].n - F[i][F[i].length - 1].n) <= 4) sm++; }
+      }
+      t.ok(big <= 12, `no 16-bar rhythm is shared by more than 3% of 400 songs in ${b}/${u} (commonest: ${big} songs, ${cls.size} distinct)`);
+      t.ok(sm / bl >= 0.9, `barline interval at most 4 semitones in >= 90% of non-phrase barlines in ${b}/${u}, 400 songs (${pct(sm, bl)}%)`);
+    }
     for (const k of Object.keys(restBy)) t.report(`rest share ${k} min / mean / max %`, restBy[k].map(x => 100 * x).reduce((a, x, i, arr) => i === arr.length - 1 ? [Math.min(a[0], x), a[1] + x, Math.max(a[2], x)].map((v, j) => (j === 1 ? v / arr.length : v).toFixed(1)).join(' / ') : [Math.min(a[0], x), a[1] + x, Math.max(a[2], x)], [99, 0, 0]));
     t.report('structural identity across dialects %', pct(structSame, structAll));
     t.report('smooth non-phrase barlines %', pct(smooth, barlines));
@@ -222,6 +307,45 @@ export default async function (t) {
     t.ok(ln('funk') < ln('latin') && ln('synthwave') > 2 * ln('funk'), 'dialect note length: funk shortest, synthwave long');
     t.ok(dstat.latin.push > dstat.jazz.push && dstat.jazz.push > 0 && dstat.baroque.push === 0 && dstat.celtic.push === 0, 'dialect push: latin most, baroque and celtic none');
     t.ok(dstat.baroque.orn > 0 && dstat.celtic.orn > 0 && dstat.synthwave.orn > 0 && dstat.metal.orn > 0 && dstat.chiprock.orn > 0 && dstat.jazz.orn === 0 && dstat.funk.orn === 0 && dstat.latin.orn === 0, 'ornaments: only where the dialect table lists them');
+    // the eight dialects are eight different lines on paper: no two of them play more than 40% of the loop's
+    // bars with the same onsets and pitches, in any game meter (cadence bars included)
+    for (const [b, u] of GAME) {
+      const key = b + '/' + u, rows = Object.entries(pairEq[key]).sort((x, y) => y[1] - x[1]), w = rows[0];
+      t.ok(w[1] / pairBars[key] <= 0.4, `every pair of dialects differs in ${key}: at most 40% identical bars (closest: ${w[0]} ${pct(w[1], pairBars[key])}%)`);
+      t.report(`dialect pairs ${key}: identical bars %, the five closest`, rows.slice(0, 5).map(r => r[0] + ' ' + pct(r[1], pairBars[key])).join(', '));
+    }
+    // each device is there, and only where it belongs
+    const again = id => 16 * dstat[id].again / dstat[id].bars;
+    t.ok(dstat.latin.push / dstat.latin.heads >= 0.6, `latin locks to the clave: the later group head is pushed in >= 60% of bars that have one (${pct(dstat.latin.push, dstat.latin.heads)}%)`);
+    t.ok(dstat.jazz.fall === dstat.jazz.held && dstat.jazz.held > 0 && IDS.every(id => id === 'jazz' || dstat[id].fall === 0), `jazz falls off a cadence note held three pulses or more to the chord tone under it, wherever the register has one (${dstat.jazz.fall} of ${dstat.jazz.held}); nobody else does`);
+    t.ok(again('metal') >= 8 && again('metal') > 3 * again('jazz'), `metal chugs: quick re-strikes per 16 bars ${again('metal').toFixed(1)} (jazz ${again('jazz').toFixed(1)})`);
+    t.ok(dstat.funk.stab / dstat.funk.twice >= 0.25 && dstat.synthwave.stab === 0, `funk hits a held first note twice (${pct(dstat.funk.stab, dstat.funk.twice)}% of bars that have one); synthwave never`);
+    t.ok(again('celtic') <= 1.5 * again('baroque'), `celtic does not stutter: quick re-strikes per 16 bars ${again('celtic').toFixed(2)} <= 1.5 x baroque's ${again('baroque').toFixed(2)}`);
+    for (const id of IDS) t.report(`dialect ${id}: quick re-strikes per 16 bars`, again(id).toFixed(2));
+  }
+
+  // ------------------------------------------------------------------ augmented seconds
+  t.section('no augmented second is taken as a step: the tune in 7 meters, the 8 dialects in the game meters, both variants');
+  {
+    const T = tally(t); let ivs = 0;
+    for (let seed = 1; seed <= SONGS; seed++) for (const variant of [null, 'boss']) {
+      const s = mk(seed, variant);
+      for (const [b, u] of SEVEN) {
+        const F = []; for (let i = 0; i < 16; i++) F.push(s.frame(i, b, u));
+        const lines = [['theme', F.map(f => f.theme.map(n => ({ t: n.beat + n.o, n: n.n })))]];
+        if (GAME.some(m => m[0] === b && m[1] === u)) for (const id of IDS) lines.push([id, F.map((f, i) => flat(s.stem(i, b, u, id, 'lead')))]);
+        for (const [name, bars] of lines) for (let i = 0; i < 16; i++) {
+          const f = F[i], nf = F[(i + 1) % 16], L = bars[i], rests = restsOf(f);
+          L.forEach((e, k) => {
+            // the tune itself: every two successive notes, a rest between them or not. A dialect: wherever the tune does not rest between them.
+            const nx = L[k + 1], q = nx || bars[(i + 1) % 16][0]; if (name !== 'theme' && !joined(rests, e.t, nx ? nx.t : b)) return;
+            ivs++; T.no(!aug2(f, e.n, nx ? f : nf, q.n), 'no melodic interval of three semitones between scale neighbours (theme and dialects, normal and boss)', `seed ${seed}${variant ? ' boss' : ''} ${b}/${u} bar ${i} ${name}: ${e.n} -> ${q.n}`);
+          });
+        }
+      }
+    }
+    T.done();
+    t.report('melodic intervals checked for augmented seconds', ivs);
   }
 
   // ------------------------------------------------------------------ theory, kept from today + grid and legality
@@ -270,8 +394,9 @@ export default async function (t) {
         const at = `seed ${seed} ${b}/${u} bar ${i}`;
         s.setVariant(null); const f0 = s.frame(i, b, u), l0 = IDS.map(id => flat(s.stem(i, b, u, id, 'lead')));
         s.setVariant('boss'); const f1 = s.frame(i, b, u), l1 = IDS.map(id => flat(s.stem(i, b, u, id, 'lead')));
-        T.no(f1 !== f0 && f1.tonic === f0.tonic && f1.chord.root === (f0.chord.deg === 'V' ? 7 : MODES[want][f0.chord.di]) && f1.chord.deg === f0.chord.deg, 'boss: same tonic and degrees, no transposition', at);
-        const sc = f1.chord.deg === 'V' ? MODES[want].map((x, k) => (k === 6 ? 11 : x)) : MODES[want];
+        // the bar's scale: the mode; a 'V' bar raises the seventh and keeps a natural second; III and VII of harmonic minor are natural
+        const sc = f1.chord.deg === 'V' ? MODES[want].map((x, k) => (k === 6 ? 11 : k === 1 && x === 1 ? 2 : x)) : want === 'harmonic' && (f1.chord.deg === 2 || f1.chord.deg === 6) ? MODES.aeolian : MODES[want];
+        T.no(f1 !== f0 && f1.tonic === f0.tonic && f1.chord.root === sc[f0.chord.di] && f1.chord.deg === f0.chord.deg, 'boss: same tonic and degrees, no transposition', at);
         T.no(JSON.stringify(f1.chord.scale) === JSON.stringify(sc), 'boss: the bar\'s scale is the variant mode', at);
         T.no(f1.theme.length === f0.theme.length && f1.theme.every((n, k) => { const m = f0.theme[k]; return n.beat === m.beat && n.o === m.o && n.d === m.d && n.s === m.s; }), 'boss theme: rhythm and structure identical', at);
         T.no(f1.theme.every((n, k) => k === 0 || Math.sign(n.n - f1.theme[k - 1].n) === Math.sign(f0.theme[k].n - f0.theme[k - 1].n)), 'boss theme: contour identical', at);
@@ -317,11 +442,16 @@ export default async function (t) {
     const s = mk(11), f = s.frame(2, 4, 4);
     t.ok(typeof composeTheme === 'function' && JSON.stringify(themeBar(s, 2, 4, 4)) === JSON.stringify(f.theme), 'themeBar(song, idx, beats, unit) is the frame\'s theme');
     t.eq(JSON.stringify(dialect(f.theme, GENRES.celtic.dialect, f).map(l => l.map(e => [e.o, e.n, e.s]))), JSON.stringify(s.stem(2, 4, 4, 'celtic', 'lead').map(l => l.map(e => [e.o, e.n, e.s]))), 'dialect(notes, pack.dialect, frame) is the lead stem');
+    for (const id of IDS) t.eq(JSON.stringify(dialect(f.theme, leadDialect(GENRES[id]), f).map(l => l.map(e => [e.o, e.d, e.n, e.s]))), JSON.stringify(s.stem(2, 4, 4, id, 'lead').map(l => l.map(e => [e.o, e.d, e.n, e.s]))), `dialect(notes, leadDialect(pack), frame) is the ${id} lead stem`);
+    t.ok(leadDialect(GENRES.jazz).dev === 'above' && leadDialect(GENRES.latin).dev === 'clave' && leadDialect(GENRES.metal).dev === 'chug' && leadDialect(GENRES.funk).dev === 'stab' && ['baroque', 'celtic', 'synthwave', 'chiprock'].every(id => leadDialect(GENRES[id]) === GENRES[id].dialect), 'leadDialect: jazz, latin, metal and funk get their device; the others play their table as it is');
+    t.ok(leadDialect({ id: 'jazz', dialect: { fill: 0, thin: 0, push: 0, art: 1, penta: false, orn: [], dev: 'chug' } }).dev === 'chug', 'leadDialect: a pack that names its own device keeps it');
     t.eq(JSON.stringify(runeLine(f.theme, f)), JSON.stringify(f.rune), 'runeLine(notes, frame) is the frame\'s rune line');
     const neutral = dialect(f.theme, { fill: 0, thin: 0, push: 0, art: 1, penta: false, orn: [] }, f);
     t.eq(JSON.stringify(flat(neutral).map(e => [e.t, e.d, e.n])), JSON.stringify(f.theme.map(n => [n.beat + n.o, n.d, n.n])), 'a neutral dialect returns the theme unchanged');
     const C = { chord: { pcs: [0, 4, 7], scale: MODES.major }, tonic: 60 };
     t.ok(classifyNCT(64, 62, 65, C) === 'ct' && classifyNCT(62, 60, 64, C) === 'pass' && classifyNCT(62, 60, 60, C) === 'nbr' && classifyNCT(65, 72, 64, C) === 'step' && classifyNCT(65, 64, 69, C) === 'bad' && classifyNCT(62, 60, null, C) === 'bad', 'classifyNCT: chord tone, passing, neighbour, leapt-in, unresolved');
+    const H = { chord: { pcs: [0, 3, 7], scale: MODES.harmonic }, tonic: 60 };
+    t.ok(classifyNCT(68, 67, 71, H) === 'bad' && classifyNCT(71, 68, 72, H) === 'step' && classifyNCT(68, 67, 67, H) === 'nbr', 'classifyNCT: the augmented second of harmonic minor (Ab to B) is not a step, out or in');
   }
 
   // ------------------------------------------------------------------ cost

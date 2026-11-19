@@ -42,7 +42,7 @@ export class Mixer {
     this.song = song; this.air = allocate(seats(this.mix, null), null, { first: this.first });
     this.idx = o.intro ? 13 : -1; this.intro = o.intro ? 2 : 0; this.bars = 0; this.pend = null; this.dwell = 0; this.enter = null;
     this.en = { E: 0.3, base: 0, level: 2, kills: -1, wait: 0 }; this.meter = ''; this.boss = false; this.dropOn = false; this.now = false;
-    this.styleId = this.air.style.id; this.styleBars = 0; this.level = 2;
+    this.styleId = this.air.style.id; this.styleBars = 0; this.level = 2; this.onAir = null;
   }
   // the wheel changed. now = no blend, cut on the next downbeat (menus, the record player)
   cue(mix, o = {}) { this.mix = mix && mix.length ? mix : [['baroque', 1]]; this.first = o.first || null; if (o.now) this.now = true; }
@@ -52,15 +52,16 @@ export class Mixer {
     const meter = m.beats + '/' + m.unit, cutMeter = this.meter !== '' && meter !== this.meter; this.meter = meter;
     const bossIn = !!m.boss && !this.boss, dropIn = !!m.drop && !this.dropOn; this.boss = !!m.boss; this.dropOn = !!m.drop;
     this.idx = (this.idx + 1) % 16; this.bars++;
-    if (cutMeter) this.idx = (Math.ceil(this.idx / 4) * 4) % 16;          // a new meter starts a new phrase
+    if (cutMeter) this.idx = (Math.ceil(this.idx / 4) * 4 + (m.beat > 0 && !m.drop ? 15 : 0)) % 16;   // a new meter starts a new phrase; entered mid-wheel, the rest of this turn is the pickup bar before it
     if (dropIn && DROP_HOLD) this.idx = 12;                                // the drop is the last A: the hook, full band
     const bd = m.dur * (m.drop && DROP_HOLD ? 2 : 1), tier = tierOf(bd), prev = this.air, fx = {};
     const want = allocate(seats(this.mix, prev), prev, { first: this.first });
     const kc = want.own.kit !== prev.own.kit, bc = want.own.bass !== prev.own.bass;
     const hold = () => allocate(seats(this.mix, prev), prev, { first: this.first, keep: { kit: prev.own.kit, bass: prev.own.bass } });
-    let state = 'steady', toast = null, noBass = false, roll = null, leave = [];
+    let state = 'steady', toast = null, noBass = false, roll = null, rollKit = null, leave = [];
     if (this.dwell > 0) this.dwell--;
-    if (cutMeter || bossIn || dropIn || this.now || tier === 0 || this.bars === 1) {
+    if (cutMeter || bossIn || dropIn) this.intro = 0;                      // a hard cut ends the intro: the tune is in
+    if (cutMeter || bossIn || dropIn || this.now || this.bars === 1 || (tier === 0 && !sameBand(prev, want))) {
       this.air = want; this.pend = null; this.enter = null; this.now = false; state = 'cut';
       if (this.bars > 1) { fx.crash = 1; this.dwell = 4; } if (bossIn || dropIn) fx.impact = 1;
     } else if (this.pend && this.bars >= this.pend.land && this.pend.built && (kc || bc)) {   // LAND: the handover, on a phrase downbeat
@@ -70,7 +71,7 @@ export class Mixer {
       if (this.pend && this.bars >= this.pend.land) this.pend = null;     // the wish changed under the build: start over
       const air = this.air = hold();                                       // guests move now; the rhythm section waits for the phrase
       if (air.own.kit !== prev.own.kit || air.own.bass !== prev.own.bass) { this.pend = null; this.dwell = 2; fx.crash = 1; state = 'cut'; }   // its player left the wheel: no waiting
-      else if (this.pend) { if (this.bars === this.pend.land - 1) { this.pend.built = true; state = 'build'; noBass = bc; roll = kc ? GENRES[want.own.kit].fillVoice || 'tom1' : null; fx.swell = 1; } }
+      else if (this.pend) { if (this.bars === this.pend.land - 1) { this.pend.built = true; state = 'build'; noBass = bc; roll = kc ? GENRES[want.own.kit].fillVoice || 'tom1' : null; rollKit = kc ? GENRES[want.own.kit].drumKit : null; fx.swell = 1; } }
       else if (this.dwell <= 0) {
         let land = this.bars + 2; while ((this.idx + land - this.bars) % 4) land++;
         this.pend = { land, built: false, kit: kc ? want.own.kit : null, bass: bc ? want.own.bass : null };
@@ -82,7 +83,7 @@ export class Mixer {
     if (state !== 'cut' && !sameBand(prev, air)) {
       const was = soft(prev), is = soft(air), key = l => l.g + ':' + l.part;
       const inK = is.filter(l => !was.some(w => key(w) === key(l))).map(key);
-      leave = was.filter(l => !is.some(w => key(w) === key(l)));
+      leave = was.filter(l => !is.some(w => key(w) === key(l)) && (!this.onAir || this.onAir.includes(key(l))));
       if (inK.length) this.enter = { keys: inK, bars: 2 };
     }
     let entering = null, enterBar = 0;
@@ -100,11 +101,12 @@ export class Mixer {
     let intro = 0;
     if (this.intro > 0) {                                                  // intro: rhythm section, then chords, then the tune
       intro = this.intro--; layers = layers.filter(l => l.part === 'kit' || l.part === 'tops' || l.part === 'bass' || (intro === 1 && l.part === 'comp'));
-      if (intro === 1) { entering = layers.filter(l => l.part === 'comp').map(l => l.g + ':comp'); enterBar = 2; }
+      if (intro === 1) { entering = layers.filter(l => l.part === 'comp').map(l => l.g + ':comp'); enterBar = 1; }
     } else if (this.idx === 0 && this.bars === 3 && state !== 'cut') fx.crash = 1;
     if (air.style.id === this.styleId) this.styleBars++; else { this.styleId = air.style.id; this.styleBars = 1; }
+    this.onAir = layers.map(l => l.g + ':' + l.part);
     return { idx: this.idx, pos, rep, sec, table: air, layers, leave, entering, enterBar, state, level, maxP, tier, bd,
-      swing: air.swing, pump: m.drop ? Math.max(0.5, air.pump) : air.pump, noBass, roll, fx, toast, drop: !!m.drop, boss: this.boss, intro };
+      swing: air.swing, pump: m.drop ? Math.max(0.5, air.pump) : air.pump, noBass, roll, rollKit, fx, toast, drop: !!m.drop, boss: this.boss, intro };
   }
 
   // what the HUD shows

@@ -30,7 +30,7 @@ export class Audio {
   constructor(opts) {
     this.opts = opts; this.ctx = null; this.last = {}; this.song = null; this.scene = null; this.mixer = new Mixer();
     this.rand = (opts && opts.rand) || Math.random; this.mix = genreMix({ arcane: 1 }); this.mixer.cue(this.mix);
-    this.gridT = null; this.hs = 0; this.wasDrop = false; this.held = 0; this.holdBd = 0.42; this.hBeat = 0; this.hAcc = 0; this.late = 0; this.steps = 0; this.toasts = [];
+    this.gridT = null; this.hs = 0; this.wasDrop = false; this.held = 0; this.holdBd = 0.42; this.hBeat = 0; this.hAcc = 0; this.late = 0; this.steps = 0; this.toasts = []; this.lastT = 0; this.lastBeat = 0; this.hT = 0; this.booth = null; this.quiet = 0;
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden) this.resync(); });
   }
   unlock() {
@@ -74,7 +74,7 @@ export class Audio {
   newSong(seed, o = {}) {
     const s = seed != null ? seed >>> 0 : (this.rand() * 4294967296) >>> 0;
     this.song = new Song(s, this.mix, { prevKey: this.song ? this.song.keyPc : undefined });
-    this.mixer.reset(this.song, { intro: !!o.intro }); this.scene = null; this.gridT = null; this.hs = 0; this.wasDrop = false;
+    this.mixer.reset(this.song, { intro: !!o.intro }); this.booth = this.scene || this.booth; this.scene = null; this.gridT = null; this.hs = 0; this.wasDrop = false;
     return this.song;
   }
   // elemWeights: { fire: 5, frost: 2, ... } from the runes on the wheel. o.first = element of slot 0 (it calls
@@ -89,8 +89,10 @@ export class Audio {
   // ---------- sequencing: one call per wheel step ----------
   // m = { beat, beats, unit, dur (seconds this step lasts), def (rune fired), slot, lvl, drop, boss, ready, sig }
   step(m, when) {
-    const c = this.ctx; if (!c || !this.opts.music || !this.song) return;
+    const c = this.ctx; if (!c || !this.song) return;
+    if (!this.opts.music) { if (m.beat === 0) this.mixer.bar(m); return; }   // muted: the DJ still keeps the books for the HUD and the collection
     if (this.held) this.hold(false);
+    if (when === undefined && c.state !== 'running') { this.gridT = null; return; }   // a frozen clock would stack every beat on one instant
     // phase-locked beat clock: follow the game's steps, but smooth frame jitter out of the grid
     const now = c.currentTime, ideal = (when === undefined ? now : when) + 0.03;
     const t = this.gridT == null || Math.abs(ideal - this.gridT) > 0.06 ? ideal : Math.max(now + 0.005, this.gridT + 0.15 * (ideal - this.gridT));
@@ -98,12 +100,13 @@ export class Audio {
     // transport: in a DROP the band holds its tempo and every step is half a beat
     const hold = !!m.drop && DROP_HOLD; let beat = m.beat, half = -1, bd = m.dur, down;
     if (hold) { if (!this.wasDrop) this.hs = 0; beat = (this.hs >> 1) % m.beats; half = this.hs & 1; bd = m.dur * 2; down = beat === 0 && half === 0; this.hs++; }
-    else { down = beat === 0 || !this.scene || this.scene.beats !== m.beats; this.holdBd = m.dur; }
+    else { down = beat === 0 || this.wasDrop || !this.scene || this.scene.beats !== m.beats; this.holdBd = m.dur; }
     this.wasDrop = hold;
     if (down) this.newBar(m, t, bd);
     const sc = this.scene; if (!sc) return;
     if (beat >= sc.beats) beat %= sc.beats;
     this.playBeat(sc, beat, half, t, bd, 0);
+    if (half < 1) { this.lastT = t; this.lastBeat = beat; }
     if (!hold && m.drop) { this.syn.drum(this.bMain, 'rock', 'hat', t + m.dur * 0.5, 0.6); if (sc.frame.accents.includes(beat)) this.syn.drum(this.dry, 'rock', 'clap', t, 0.7); }
     // the rune that just fired answers on a chord tone under the tune, in its element's voice
     const d = m.def;
@@ -144,7 +147,7 @@ export class Audio {
     else P(this.inLP.frequency, 18000, 0.02);
     if (sc.leave.length) { P(this.outHP.frequency, 2500, barSec / 3); P(this.eSend.gain, 0.6, barSec / 3); }
     else { P(this.outHP.frequency, 40, 0.05); P(this.eSend.gain, 0, 0.05); }
-    if (!this.held) P(this.mlp.frequency, 18000, 0.3);
+    this.mlp.frequency.setTargetAtTime(18000, this.ctx.currentTime, 0.3);
     if (sc.fx.crash) this.syn.drum(this.dry, GENRES[T.own.kit].drumKit, 'crash', t, 0.8);
     if (sc.fx.impact) this.syn.hitTone(this.fxg, t, 'sine', 90, 35, 0.5, 0.5);
     if (sc.toast) this.toasts.push(sc.toast);
@@ -170,7 +173,7 @@ export class Audio {
         const drum = typeof e.n === 'string';
         if (sc.roll && part === 'kit' && !booth && (e.n === 'kick' || e.n === 'snare' || e.n === 'clap') && !(beat === 0 && e.o === 0)) continue;
         const cost = e.ns ? e.ns.length : 1; if (e.p > 0 && budget < cost) continue; budget -= cost;
-        const o = sw !== 0.5 ? (e.o < 0.5 ? e.o * sw * 2 : sw + (e.o - 0.5) * (1 - sw) * 2) : e.o, at = t + o * bd;
+        const o = sw !== 0.5 ? (e.o < 0.5 ? e.o * sw * 2 : sw + (e.o - 0.5) * (1 - sw) * 2) : e.o, at = t + (half === 1 ? o - 0.5 : o) * bd;
         if (drum) { syn.drum(part === 'kit' ? this.dry : l.route.out, l.kit, e.n, at, e.v * l.gain); if (part === 'kit' && e.n === 'kick' && e.o === 0) kick = true; }
         else syn.note(l.route, e, at, bd, l.gain, l.inst);
       }
@@ -178,21 +181,23 @@ export class Audio {
     if (booth) return;
     const kit = GENRES[sc.table.own.kit].drumKit, first = half < 1;
     if (sc.drop && half >= 0) {                                             // the drop: four on the floor, open hats between
-      if (half === 0 && !kick) { syn.drum(this.dry, kit, 'kick', t, 0.9); kick = true; }
-      if (half === 1) syn.drum(this.bMain, kit, 'ohat', t, 0.5 * PART_GAIN.tops);
+      const head = sc.unit === 4 || sc.frame.accents.includes(beat);         // in /8 the floor is the group heads, not every eighth
+      if (half === 0 && head && !kick) { syn.drum(this.dry, kit, 'kick', t, 0.9); kick = true; }
+      if (sc.unit === 4 ? half === 1 : half === 0 && !head) syn.drum(this.bMain, kit, 'ohat', t, 0.5 * PART_GAIN.tops);
     }
     if (kick && sc.pump > 0 && first) { this.pump.gain.setTargetAtTime(1 - sc.pump, t, 0.004); this.pump.gain.setTargetAtTime(1, t + 0.03, clamp(0.18 * bd, 0.03, 0.12)); }
     if (first && sc.roll && beat > 0) {                                     // build bar: the incoming drummer rolls in
       const k = beat / sc.beats, n = (k < 0.5 ? 2 : 4) >> (tier < 2 ? 1 : 0) || 1;
-      for (let q = 0; q < n; q++) syn.drum(this.dry, kit, sc.roll, t + (q / n) * bd, 0.35 + 0.65 * (k + q / n / sc.beats));
+      for (let q = 0; q < n; q++) syn.drum(this.dry, sc.rollKit || kit, sc.roll, t + (q / n) * bd, 0.35 + 0.65 * (k + q / n / sc.beats));
     }
     if (first && sc.fx.swell) { const k = beat / Math.max(1, sc.beats - 1); syn.hitNoise(this.fxg, t, bd, 0.05 + 0.15 * k, 'bandpass', 400 * Math.pow(15, k), 0, 1.2); }
   }
   // a Grace Note slot takes no time: play an actual grace note, on the same clock, in the current harmony
   grace() {
-    const c = this.ctx; if (!c || !this.opts.music || !this.song) return;
-    const f = this.scene ? this.scene.frame : this.song.frame(0, 4, 4), top = f.voicing[f.voicing.length - 1] + 12, t = Math.max(c.currentTime + 0.01, (this.gridT || 0) - 0.06);
-    this.syn.note(this.rDry, { n: top + 2, d: 0.05, v: 0.5 }, t, 1, 1, 'marimba'); this.syn.note(this.rDry, { n: top, d: 0.1, v: 0.6 }, t + 0.045, 1, 1, 'marimba');
+    const c = this.ctx; if (!c || !this.opts.music || !this.song || c.state !== 'running') return;
+    const f = this.scene ? this.scene.frame : this.song.frame(0, 4, 4), top = f.voicing[f.voicing.length - 1] + 12, now = c.currentTime;
+    this.gridT = null;   // the wheel drops its frame carry on a grace: the beat that follows in this frame lands at now + 0.03, with the main note
+    this.syn.note(this.rDry, { n: top + 2, d: 0.05, v: 0.5 }, now + 0.005, 1, 1, 'marimba'); this.syn.note(this.rDry, { n: top, d: 0.1, v: 0.6 }, now + 0.03, 1, 1, 'marimba');
   }
 
   // ---------- no dead air: while a menu is over the game the band keeps looping the bar, muffled ----------
@@ -202,22 +207,28 @@ export class Audio {
     const t = this.ctx.currentTime;
     this.mlp.frequency.setTargetAtTime(on ? 650 : 18000, t, on ? 0.08 : 0.3);
     this.music.gain.setTargetAtTime(on ? 0.32 : 0.45, t, 0.08);
-    if (on) { this.hAcc = this.holdBd; this.hBeat = 0; } else this.gridT = null;
+    if (on) { const bd = clamp(this.holdBd, 0.2, 0.6), n = Math.max(1, Math.ceil((t + 0.03 - this.lastT) / bd - 1e-6)); this.hT = this.lastT + n * bd; this.hBeat = this.lastBeat + n; }
+    else { this.gridT = null; if (this.wasDrop && (this.hs & 1)) this.hs++; }   // back from a menu in a DROP: on a whole beat
   }
   idle(dt) {
-    const c = this.ctx; if (!c || !this.held || !this.opts.music || !this.scene || !(dt > 0) || dt > 0.1) return;
+    const c = this.ctx, sc = this.scene || this.booth; if (!c || !this.held || !this.opts.music || !sc || c.state !== 'running') return;
     if (typeof document !== 'undefined' && document.hidden) return;
-    this.hAcc -= dt; if (this.hAcc > 0) return;
-    const sc = this.scene, bd = clamp(this.holdBd, 0.2, 0.6); this.hAcc += bd;
-    this.playBeat(sc, this.hBeat++ % sc.beats, -1, c.currentTime + 0.03, bd, this.held === 'over' ? 2 : 1);
+    const now = c.currentTime, bd = clamp(this.holdBd, 0.2, 0.6);
+    if (this.hT < now + 0.005) { const k = Math.ceil((now + 0.005 - this.hT) / bd); this.hT += k * bd; this.hBeat += k; }   // after a stall: skip whole beats, stay on the grid
+    if (this.hT - now > 0.07) return;                                       // one beat at a time, up to 70 ms ahead, timed by the audio clock
+    if (this.hT >= this.quiet) this.playBeat(sc, this.hBeat % sc.beats, -1, this.hT, bd, this.held === 'over' ? 2 : 1);
+    this.hT += bd; this.hBeat++;
   }
+  // seconds until the hold loop's next unscheduled beat: the game restarts its wheel there, so the pulse never breaks
+  beatIn() { return this.held && this.ctx && (this.scene || this.booth) ? Math.max(0, this.hT - 0.03 - this.ctx.currentTime) : null; }
   // stage clear: the home chord, the root and a crash, thrown into the echo
   outro() {
-    const c = this.ctx; if (!c || !this.opts.music || !this.song || !this.scene) return;
-    const t = c.currentTime + 0.03, T = this.song.tonic, sc = MODES[this.song.activeMode], own = this.mixer.air.own;
-    this.syn.note(this.rMain, { n: T + 12, ns: [T + 12, T + 12 + sc[2], T + 19], d: 5, v: 0.7, x: { pad: 1 } }, t, 0.42, 1, 'strings');
-    this.syn.note(this.rDry, { n: 36 + (T % 12), d: 4, v: 0.9 }, t, 0.42, 1, GENRES[own.bass].inst.bass);
-    this.syn.drum(this.dry, GENRES[own.kit].drumKit, 'crash', t, 0.9);
+    const c = this.ctx; if (!c || !this.opts.music || !this.song || !this.scene || c.state !== 'running') return;
+    const t = c.currentTime + 0.03, T = this.song.tonic, sc = MODES[this.song.activeMode], own = this.mixer.air.own, r = { out: this.fxg, send: this.send };
+    this.quiet = t + 5 * 0.42;                                            // the hold loop waits for the home chord
+    this.syn.note(r, { n: T + 12, ns: [T + 12, T + 12 + sc[2], T + 19], d: 5, v: 0.7, x: { pad: 1 } }, t, 0.42, 1, 'strings');
+    this.syn.note(r, { n: 36 + (T % 12), d: 4, v: 0.9 }, t, 0.42, 1, GENRES[own.bass].inst.bass);
+    this.syn.drum(this.fxg, GENRES[own.kit].drumKit, 'crash', t, 0.9);
   }
 
   // ---------- sound effects ----------
