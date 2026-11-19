@@ -119,14 +119,16 @@ export class RunScene extends Phaser.Scene {
   // The band's style sits under the meter. Handovers flash there, a pending one is announced, and a style that
   // has been on air for 8 bars joins the run's setlist and the collection.
   styleTick(h, run) {
-    const dk = G.audio.decks(); let t; while ((t = G.audio.takeToast())) this.styleFlash = { text: t, t: 2.6 };
+    const dts = this.game.loop.delta / 1000; let t; while ((t = G.audio.takeToast())) this.styleFlash = { text: t, t: 2.6 };
+    if ((this._dkT = (this._dkT || 0) - dts) <= 0 || !this._dk) { this._dk = G.audio.decks(); this._dkT = 0.2; }   // the readout is refreshed five times a second
+    const dk = this._dk;
     if (!dk || !dk.style) { h.meterSub.setText(run.size >= 6 ? 'DOUBLE TIME' : 'TIME'); return; }
     const st = dk.style;
     if (run.state === 'play' && dk.styleBars >= 8 && !this.setlist.includes(st.id)) {
       this.setlist.push(st.id);
       if (!save.styles.includes(st.id)) { save.styles.push(st.id); persist(); this.toastQ.push({ text: 'NEW STYLE: ' + this.styleName(st.id).toUpperCase(), color: 0xffcd75 }); }
     }
-    if (this.styleFlash && (this.styleFlash.t -= this.game.loop.delta / 1000) <= 0) this.styleFlash = null;
+    if (this.styleFlash && (this.styleFlash.t -= dts) <= 0) this.styleFlash = null;
     const fl = this.styleFlash, next = !fl && dk.pending && this.time.now % 2400 < 1100;
     h.meterSub.setText(fl ? fl.text : next ? 'NEXT: ' + dk.pending.toUpperCase() : st.name.toUpperCase()).setColor(fl || next || st.id.includes('+') ? C.gold : C.dim);
   }

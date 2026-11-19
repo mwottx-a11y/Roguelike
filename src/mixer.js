@@ -22,6 +22,7 @@ const TH = [0.25, 0.5, 0.74];
 // Energy 1..3 for the coming bar. S = { E, base, level, kills, wait }; sig = { prog, kills, bossHp }.
 // A slow baseline of the kill rate makes a burst of kills a surge whatever the build's usual pace is.
 export function conduct(S, sig, barSec, boss, even) {
+  if (S.kills < 0) S.kills = sig.kills || 0;                              // first bar of a song: no history, no surge
   const rate = Math.max(0, (sig.kills || 0) - S.kills) / Math.max(0.2, barSec); S.kills = sig.kills || 0;
   S.base += (rate - S.base) * (1 - Math.exp(-barSec / 20));
   const surge = Math.tanh((rate - S.base) / (S.base + 0.5));
