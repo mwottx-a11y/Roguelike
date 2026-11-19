@@ -1,5 +1,5 @@
 // HEXBEAT — run simulation. Pure logic: no DOM, no rendering. The renderer reads our arrays each frame.
-import { GUESTS, AFFIXES, RUNES, PASSIVES, RELICS, RELIC_IDS, PACT_IDS, CHARS, META, ENEMIES, BIOMES, MUTATORS, ELEM, MAX_RUNE_LVL, fusionOf } from './data.js';
+import { GUESTS, AFFIXES, RUNES, PASSIVES, RELICS, RELIC_IDS, PACT_IDS, CHARS, META, ENEMIES, BIOMES, MUTATORS, ELEM, MAX_RUNE_LVL, fusionOf, FUSIONS } from './data.js';
 
 const TAU = Math.PI * 2;
 const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
@@ -108,9 +108,33 @@ export class Run {
     if (this.meter && meter !== this.meter && this.toasts) this.toast(meter + (n >= 6 && this.meter.endsWith('/4') ? '  DOUBLE TIME!' : ' TIME'), 0x73eff6);
     this.meter = meter;
     // the band follows the wheel: each spell class brings its genre, weighted by rune level
-    const mix = {}; for (let i = 0; i < n; i++) { const w = this.wheel[i]; if (!w) continue; const d = RUNES[w.id]; mix[d.elem] = (mix[d.elem] || 0) + (d.fusion ? 8 : d.type === 'mod' ? w.lvl * 0.6 : w.lvl); }
-    this.audio.setMix(mix);
+    const mx = this.mixOf(this.wheel); this.audio.setMix(mx.w, { first: mx.first });
   }
+  // Class weights of a wheel, for the band: a spell counts its level, a modifier 0.6 of it, and a fused rune 8
+  // shared between the classes of its two parents and itself (so fusing two classes keeps both genres playing).
+  // first = the class in slot 0: the downbeat rune calls the tune.
+  mixOf(wheel) {
+    const w = {}; let first = null;
+    for (let i = 0; i < this.size; i++) {
+      const r = wheel[i]; if (!r) continue; const d = RUNES[r.id]; if (i === 0) first = d.elem;
+      if (d.fusion) { const f = FUSIONS.find(x => x.id === r.id), els = [...new Set(f ? [RUNES[f.a].elem, RUNES[f.b].elem, d.elem] : [d.elem])]; for (const e of els) w[e] = (w[e] || 0) + 8 / els.length; }
+      else w[d.elem] = (w[d.elem] || 0) + (d.type === 'mod' ? r.lvl * 0.6 : r.lvl);
+    }
+    return { w, first };
+  }
+  // the mix a draft option would give (a new rune on a full wheel is assumed to replace the lowest level)
+  mixIf(o) {
+    const wh = this.wheel.slice(0, this.size).map(r => r && { id: r.id, lvl: r.lvl });
+    if (o.kind === 'up') { if (wh[o.slot]) wh[o.slot].lvl++; else return null; }
+    else if (o.kind === 'rune') { let i = wh.findIndex(r => !r); if (i < 0) { i = 0; for (let k = 1; k < wh.length; k++) if (wh[k].lvl < wh[i].lvl) i = k; } wh[i] = { id: o.id, lvl: 1 }; }
+    else if (o.kind === 'fuse') { wh[o.i] = { id: o.id, lvl: 1 }; wh[o.j] = null; }
+    else return null;
+    return this.mixOf(wh);
+  }
+  // how fast the wheel turns right now (the music's tempo follows the same number)
+  stepRate() { const s = this.s; return s.tempo * (s.blues && this.p.hp < s.maxHp * 0.5 ? 1.15 : 1) * (this.dropT > 0 ? 2 : 1); }
+  // what the music's conductor may know about the fight (one reused object)
+  sig() { const g = this._sig || (this._sig = {}), st = this.stage; g.prog = st.boss || st.bossDone ? 1 : Math.min(1, st.t / st.dur); g.kills = this.kills; g.bossHp = st.boss ? st.boss.hp / st.boss.maxHp : 1; return g; }
   stepLen() { return this.size >= 6 ? STEP_Q / 2 : STEP_Q; }
   // adjacent (circular) pairs of MAX spells that match a recipe
   fusionReady() {
@@ -146,7 +170,7 @@ export class Run {
     this.enemies.length = 0; this.bullets.length = 0; this.zones = this.zones.filter(z => !z.enemy); this.spot = null; this.mines.length = 0; this.pets.length = 0; this.decoy = null;
     this.state = 'play';
     this.fx.biome(biome);
-    this.audio.newSong();
+    this.audio.newSong(undefined, { intro: true });
     this.toast(biome.name, biome.acc);
     if (st.mut.id !== 'calm') this.toast(st.mut.name.toUpperCase(), 0xffcd75);
     if (st.freeRelic) this.pending.push('relic');
@@ -204,7 +228,7 @@ export class Run {
 
     // wheel
     if (this.state === 'play') {
-      this.stepT -= dt * s.tempo * (s.blues && p.hp < s.maxHp * 0.5 ? 1.15 : 1) * (this.dropT > 0 ? 2 : 1);
+      this.stepT -= dt * this.stepRate();
       let guard = 0;
       while (this.stepT <= 0 && guard++ < 10) { this.stepT += this.stepLen(); this.fireStep(); }
     }
@@ -263,7 +287,7 @@ export class Run {
     const def = slot && RUNES[slot.id];
     if (i === 0) this.mBeat = 0;
     if (slot && slot.id === 'grace') this.audio.grace();
-    else { this.audio.step({ beat: this.mBeat % this.beats, beats: this.beats, unit: n >= 6 ? 8 : 4, def, slot: i, drop: this.dropT > 0, boss: !!this.stage.boss, dur: this.stepLen() / (s.tempo * (this.dropT > 0 ? 2 : 1)) }); this.mBeat++; }
+    else { this.audio.step({ beat: this.mBeat % this.beats, beats: this.beats, unit: n >= 6 ? 8 : 4, def, slot: i, lvl: slot ? slot.lvl : 1, drop: this.dropT > 0, boss: !!this.stage.boss, ready: this.drop >= 100 && this.dropT <= 0, sig: this.sig(), dur: this.stepLen() / this.stepRate() }); this.mBeat++; }
     if (i === 0) this.fx.pulse();
     if (this.step === 0) {
       this.loops++;
@@ -588,7 +612,7 @@ export class Run {
   }
   bossDown(e) {
     const st = this.stage;
-    st.bossDone = true; st.boss = null; st.arena = null; this.c.bossKills++; this.c.cleared = Math.max(this.c.cleared, st.n + 1);
+    st.bossDone = true; st.boss = null; st.arena = null; this.audio.outro(); this.c.bossKills++; this.c.cleared = Math.max(this.c.cleared, st.n + 1);
     if (!st.hit) this.c.noHitStage = true;
     this.fx.shake(1); this.fx.flash(0xffffff, 0.8); this.fx.hitstop(0.25); this.audio.sfx('bossDie');
     for (const q of this.enemies) if (!q.dead && !q.boss) { q.dead = true; this.fx.burst(q.x, q.z, q.color, 5, {}); this.pickups.push({ type: 'xp', x: q.x, z: q.z, v: q.k.xp, t: 0 }); }

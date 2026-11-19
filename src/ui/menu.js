@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { G, C, makeRoot, txt, img, btn, panel, tap, clear, hexs } from './kit.js';
 import { ELEM_GENRE, GENRES } from '../music.js';
+import { ALL_STYLES, mixForStyle } from '../blend.js';
 import { save, persist, resetSave, metaLvl, checkFeats, metaTotals } from '../save.js';
 import { CHARS, META, metaCost, RUNES, RUNE_IDS, ELEM, FEATS, FUSIONS, SKINS, VOLUME_MAX, volumeDesc, TIPS, BIOMES } from '../data.js';
 
@@ -18,7 +19,7 @@ export class MenuScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off('resize', this.build, this));
   }
   // the title tune is composed for the selected character's starting runes
-  charSong() { const mix = {}; for (const id of CHARS[this.charIdx].start) { const e = RUNES[id].elem; mix[e] = (mix[e] || 0) + 1; } G.audio.setMix(mix); G.audio.newSong(); }
+  charSong() { const mix = {}; for (const id of CHARS[this.charIdx].start) { const e = RUNES[id].elem; mix[e] = (mix[e] || 0) + 1; } G.audio.setMix(mix, { now: true }); G.audio.newSong(); this.mB = 4; this.mU = 4; }
   go(view) { this.view = view; this.sel = 0; this.confirm = false; this.build(); }
   update(t, dms) {
     if (G.hidden) return;
@@ -26,7 +27,7 @@ export class MenuScene extends Phaser.Scene {
     G.world.renderMenu(Math.min(0.05, dms / 1000), c.id, c.start, this.view === 'looks' ? SKINS[this.sel].id : save.skin);
     // title music: a freshly composed tune in 4/4
     this.mt = Math.max(-0.1, this.mt - dms / 1000);
-    if (this.mt <= 0) { this.mt += 0.42; G.audio.step({ beat: this.mb % 4, beats: 4, unit: 4, dur: 0.42 }); this.mb++; }
+    if (this.mt <= 0) { const B = this.mB || 4, U = this.mU || 4, dur = U === 8 ? 0.21 : 0.42; this.mt += dur; G.audio.step({ beat: this.mb % B, beats: B, unit: U, dur }); this.mb++; }
   }
   header(title) {
     const r = this.root, m = this.m;
@@ -128,7 +129,22 @@ export class MenuScene extends Phaser.Scene {
   }
   runes() {
     const r0 = this.root, m0 = this.m;
-    btn(this, r0, m0.cx, 66 + m0.top, 200, 24, this.runeTab === 'runes' ? 'SHOW FUSIONS >' : '< SHOW RUNES', () => { this.runeTab = this.runeTab === 'runes' ? 'fusions' : 'runes'; this.sel = 0; this.build(); }, { size: 11, color: C.gold });
+    btn(this, r0, m0.cx, 66 + m0.top, 200, 24, this.runeTab === 'runes' ? 'SHOW FUSIONS >' : this.runeTab === 'fusions' ? 'SHOW STYLES >' : '< SHOW RUNES', () => { this.runeTab = this.runeTab === 'runes' ? 'fusions' : this.runeTab === 'fusions' ? 'crate' : 'runes'; this.sel = 0; this.build(); }, { size: 11, color: C.gold });
+    if (this.runeTab === 'crate') {
+      // the crate: every style the band can play. Found ones can be put on as the menu music.
+      const all = typeof location !== 'undefined' && /soundcheck=1/.test(location.search), has = id => all || (save.styles || []).includes(id);
+      const iconOf = g => 'rune_' + (RUNE_IDS.find(id => RUNES[id].elem === GENRES[g].elem) || RUNE_IDS[0]);
+      const items = ALL_STYLES.map(s => ({ icon: iconOf(s.b && this.playing === s.id ? s.b : s.a), dim: !has(s.id), sub: this.playing === s.id ? 'ON' : has(s.id) ? '' : '?', subColor: this.playing === s.id ? C.green : C.gold }));
+      return this.grid(`STYLES  ${ALL_STYLES.filter(s => (save.styles || []).includes(s.id)).length}/${ALL_STYLES.length}`, items, (it, i) => {
+        const s = ALL_STYLES[i], got = has(s.id), on = this.playing === s.id;
+        const d = { name: got ? s.name : '???', color: got && s.b ? C.gold : C.text, desc: `${s.recipe}\n${s.b ? GENRES[s.a].name + ' x ' + GENRES[s.b].name : 'A single class on the decks'}${on ? '\nNOW PLAYING: ' + G.audio.info() + '  ' + this.mB + '/' + this.mU : ''}` };
+        if (got) d.button = { label: on ? (all ? 'NEXT SONG / METER' : 'NEXT SONG') : 'PLAY', ok: true, cb: () => {
+          if (on && all) { const k = [[4, 4], [3, 4], [5, 4], [6, 8]], j = (k.findIndex(q => q[0] === this.mB && q[1] === this.mU) + 1) % 4; this.mB = k[j][0]; this.mU = k[j][1]; } this.mb = 0;
+          this.playing = s.id; G.audio.setMix(mixForStyle(s.id), { now: true }); G.audio.newSong(); this.build(); } };
+        else { d.note = 'Play a run with this mix to find it'; d.noteColor = C.gold; }
+        return d;
+      }, 24);
+    }
     if (this.runeTab === 'fusions') {
       const items = FUSIONS.map(f => { const got = (save.fusions || []).includes(f.id); return { icon: 'rune_' + f.id, dim: !got, sub: got ? 'MADE' : '', subColor: C.green }; });
       return this.grid('FUSIONS', items, (it, i) => { const f = FUSIONS[i], got = (save.fusions || []).includes(f.id); return { name: f.name, color: hexs(ELEM[f.elem].c), desc: `${RUNES[f.a].name} + ${RUNES[f.b].name}  -  plays ${GENRES[ELEM_GENRE[f.elem]].name}\n${f.desc}`, note: got ? 'DISCOVERED' : 'Both MAX level, side by side on the wheel', noteColor: got ? C.green : C.gold }; }, 24);
